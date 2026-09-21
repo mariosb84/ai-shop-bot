@@ -1,0 +1,23 @@
+version: '2.2'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aishop_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: aishop_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - aishop_postgres_data:/var/lib/postgresql/data
+    networks:
+      - aishop-network
+
+networks:
+  aishop-network:
+    driver: bridge
+
+volumes:
+  aishop_postgres_data:

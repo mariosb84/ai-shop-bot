@@ -1,0 +1,29 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  application:
+    name: ai-shop-bot
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/aishop_db}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+server:
+  port: 9901
+
+tg:
+  username: ${TELEGRAM_BOT_USERNAME:shopAiHelp_bot}
+  token: ${TELEGRAM_BOT_TOKEN}
+
+logging:
+  level:
+    root: info
+    org.example: DEBUG

@@ -8,6 +8,7 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 
 @Slf4j
 @Component
@@ -39,6 +40,8 @@ public class AiShopBot extends TelegramLongPollingBot {
     public void onUpdateReceived(Update update) {
         if (update.hasMessage()) {
             messageHandler.handleTextMessage(update.getMessage());
+        } else if (update.hasCallbackQuery()) {
+            messageHandler.handleCallback(update.getCallbackQuery());
         }
     }
 
@@ -52,4 +55,18 @@ public class AiShopBot extends TelegramLongPollingBot {
             log.error("Ошибка отправки сообщения: {}", e.getMessage());
         }
     }
+
+    public void sendMessageWithKeyboard(Long chatId, String text, InlineKeyboardMarkup keyboard) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        message.setText(text);
+        message.setParseMode("Markdown");
+        message.setReplyMarkup(keyboard);
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            log.error("Ошибка отправки сообщения с кнопками: {}", e.getMessage());
+        }
+    }
+
 }

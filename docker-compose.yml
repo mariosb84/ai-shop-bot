@@ -1,4 +1,3 @@
-version: '2.2'
 services:
   postgres:
     image: postgres:16-alpine
@@ -12,6 +11,36 @@ services:
       - "5433:5432"
     volumes:
       - aishop_postgres_data:/var/lib/postgresql/data
+    networks:
+      - aishop-network
+
+  python-ai:
+    build: ./python-ai
+    container_name: aishop_python
+    restart: always
+    env_file:
+      - ./python-ai/.env
+    ports:
+      - "8000:8000"
+    networks:
+      - aishop-network
+
+  app:
+    build: .
+    container_name: aishop_app
+    restart: always
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/aishop_db
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: postgres
+      AI_SERVICE_URL: http://python-ai:8000
+    ports:
+      - "9901:9901"
+    depends_on:
+      - postgres
+      - python-ai
     networks:
       - aishop-network
 

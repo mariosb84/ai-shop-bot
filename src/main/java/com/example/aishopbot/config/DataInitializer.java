@@ -1,5 +1,6 @@
 package com.example.aishopbot.config;
 
+import com.example.aishopbot.client.AiServiceClient;
 import com.example.aishopbot.domain.Product;
 import com.example.aishopbot.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,19 +17,25 @@ import java.util.List;
 public class DataInitializer implements CommandLineRunner {
 
     private final ProductRepository productRepository;
+    private final AiServiceClient aiServiceClient;
 
     @Override
     public void run(String... args) {
-        if (productRepository.count() > 0) return;
+        if (productRepository.count() == 0) {
+            productRepository.saveAll(List.of(
+                    createProduct("Футболка Classic", "Хлопок 100%, размеры S-XL, цвет белый/чёрный", "1500"),
+                    createProduct("Джинсы Slim", "Деним, размеры 28-36, узкий крой", "3500"),
+                    createProduct("Кроссовки Run", "Для бега, амортизация, размеры 36-45", "5000"),
+                    createProduct("Худи Oversize", "Тёплое, свободный крой, цвет серый", "2800")
+            ));
+            log.info("✅ Загружено {} тестовых товаров", productRepository.count());
+        } else {
+            log.info("Товары уже есть в БД, пропускаем загрузку");
+        }
 
-        productRepository.saveAll(List.of(
-                createProduct("Футболка Classic", "Хлопок 100%, размеры S-XL, цвет белый/чёрный", "1500"),
-                createProduct("Джинсы Slim", "Деним, размеры 28-36, узкий крой", "3500"),
-                createProduct("Кроссовки Run", "Для бега, амортизация, размеры 36-45", "5000"),
-                createProduct("Худи Oversize", "Тёплое, свободный крой, цвет серый", "2800")
-        ));
-
-        log.info("✅ Загружено {} тестовых товаров", productRepository.count());
+        /* Всегда индексируем товары в Qdrant*/
+        aiServiceClient.indexProducts(productRepository.findAll());
+        log.info("📦 Индексация товаров в Qdrant запущена");
     }
 
     private Product createProduct(String name, String description, String price) {

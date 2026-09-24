@@ -34,3 +34,7 @@ build/
 
 ### env files ###
 .env
+### python files ###
+python-ai/models/
+python-ai/venv/
+python-ai/__pycache__/

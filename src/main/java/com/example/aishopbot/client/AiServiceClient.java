@@ -1,5 +1,6 @@
 package com.example.aishopbot.client;
 
+import com.example.aishopbot.domain.Product;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -11,7 +12,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -57,4 +60,33 @@ public class AiServiceClient {
             return "❌ Не удалось связаться с AI. Проверьте соединение.";
         }
     }
+
+    public void indexProducts(List<Product> products) {
+        try {
+            ObjectNode payload = objectMapper.createObjectNode();
+            var arr = payload.putArray("products");
+            for (Product p : products) {
+                var node = arr.addObject();
+                node.put("id", p.getId());
+                node.put("name", p.getName());
+                node.put("description", p.getDescription());
+                node.put("price", p.getPrice().doubleValue());
+            }
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(aiServiceUrl + "/index"))
+                    .header("Content-Type", "application/json; charset=UTF-8")
+                    .timeout(Duration.ofSeconds(300))
+                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString(), StandardCharsets.UTF_8))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+            log.info("Индексация товаров: {} — {}", response.statusCode(), response.body());
+        } catch (Exception e) {
+            log.error("Ошибка индексации товаров: {}", e.getMessage(), e);
+        }
+    }
+
 }

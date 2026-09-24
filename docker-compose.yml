@@ -14,14 +14,33 @@ services:
     networks:
       - aishop-network
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: aishop_qdrant
+    restart: always
+    ports:
+      - "6333:6333"
+    volumes:
+      - aishop_qdrant_data:/qdrant/storage
+    networks:
+      - aishop-network
+
   python-ai:
     build: ./python-ai
     container_name: aishop_python
     restart: always
     env_file:
       - ./python-ai/.env
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ./python-ai/models/model:/app/model
     ports:
       - "8000:8000"
+    depends_on:
+      - qdrant
     networks:
       - aishop-network
 
@@ -50,3 +69,4 @@ networks:
 
 volumes:
   aishop_postgres_data:
+  aishop_qdrant_data:

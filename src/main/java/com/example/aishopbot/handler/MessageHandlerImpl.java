@@ -139,20 +139,8 @@ public class MessageHandlerImpl implements MessageHandler {
 
     private void handleAiQuestion(Long chatId, String question) {
         stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
-
         bot.sendMessage(chatId, "🤔 Думаю над ответом...");
-
-        // Собираем каталог товаров в контекст
-        String catalog = productRepository.findAllByActiveTrue().stream()
-                .map(p -> "- " + p.getName() + ": " + p.getDescription() + " (" + p.getPrice() + " ₽)")
-                .collect(Collectors.joining("\n"));
-
-        String systemPrompt = "Ты — вежливый консультант интернет-магазина. " +
-                "Отвечай кратко, дружелюбно и по делу. " +
-                "Вот список товаров магазина:\n" + catalog + "\n\n" +
-                "Помогай клиентам подобрать товар и отвечай на вопросы.";
-
-        String reply = aiServiceClient.ask(question, systemPrompt);
+        String reply = aiServiceClient.ask(question, null);
         bot.sendMessage(chatId, reply);
     }
 

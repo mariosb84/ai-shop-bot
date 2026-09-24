@@ -38,3 +38,5 @@ build/
 python-ai/models/
 python-ai/venv/
 python-ai/__pycache__/
+__pycache__/
+*.pyc

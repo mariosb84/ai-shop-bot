@@ -16,7 +16,6 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -40,6 +39,7 @@ public class MessageHandlerImpl implements MessageHandler {
         this.aiServiceClient = aiServiceClient;
     }
 
+    /* Обработка текстовых сообщений*/
     @Override
     public void handleTextMessage(Message message) {
         if (message == null || message.getText() == null) return;
@@ -50,17 +50,33 @@ public class MessageHandlerImpl implements MessageHandler {
 
         log.debug("Сообщение от {}: {} (state={})", chatId, text, state);
 
-        if (UserStateManager.STATE_ASK_AI.equals(state)) {
+        /* Защита: если пользователь в состоянии ASK_AI, но отправил команду — */
+        /* обрабатываем как команду, а не как вопрос к AI*/
+        boolean isCommand = text.startsWith("/");
+
+        if (UserStateManager.STATE_ASK_AI.equals(state) && !isCommand) {
             handleAiQuestion(chatId, text);
             return;
         }
 
+        /* Обработка команд*/
         switch (text) {
             case "/start" -> showShopSelection(chatId);
-            default -> bot.sendMessage(chatId, "Напишите /start");
+            case "/shop" -> showShopSelection(chatId);
+            case "/catalog" -> showCatalog(chatId);
+            case "/ai" -> startAiDialog(chatId);
+            case "/help" -> bot.sendMessage(chatId,
+                    "📞 Если нужна помощь — напишите: support@example.com");
+            default -> {
+                if (UserStateManager.STATE_ASK_AI.equals(state)) {
+                    stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
+                }
+                bot.sendMessage(chatId, "Выберите команду из меню 👇");
+            }
         }
     }
 
+    /* Обработка нажатий на inline-кнопки*/
     @Override
     public void handleCallback(CallbackQuery callbackQuery) {
         Long chatId = callbackQuery.getMessage().getChatId();
@@ -68,7 +84,7 @@ public class MessageHandlerImpl implements MessageHandler {
 
         log.debug("Callback от {}: {}", chatId, data);
 
-        // Выбор магазина (формат: shop_1, shop_2)
+        /* Выбор магазина (формат: shop_1, shop_2)*/
         if (data.startsWith("shop_")) {
             Long shopId = Long.parseLong(data.substring(5));
             selectShop(chatId, shopId);
@@ -82,15 +98,19 @@ public class MessageHandlerImpl implements MessageHandler {
             case "menu_change_shop" -> showShopSelection(chatId);
             case "ai_cancel" -> {
                 stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
-                showMainMenu(chatId);
+                bot.sendMessage(chatId, "❌ Отменено. Выберите команду из меню 👇");
             }
             default -> bot.sendMessage(chatId, "Неизвестная команда");
         }
     }
 
+    /* Показ списка магазинов для выбора*/
     private void showShopSelection(Long chatId) {
         stateManager.setState(chatId, UserStateManager.STATE_SHOP_MENU);
         stateManager.clearSelectedShop(chatId);
+
+        /* Устанавливаем меню-кнопку (гамбургер в левом нижнем углу)*/
+        bot.setMenuButton(chatId);
 
         List<Shop> shops = shopRepository.findAllByActiveTrue();
         if (shops.isEmpty()) {
@@ -114,6 +134,7 @@ public class MessageHandlerImpl implements MessageHandler {
                 keyboard);
     }
 
+    /* Обработка выбора магазина*/
     private void selectShop(Long chatId, Long shopId) {
         Shop shop = shopRepository.findById(shopId).orElse(null);
         if (shop == null) {
@@ -127,37 +148,11 @@ public class MessageHandlerImpl implements MessageHandler {
         bot.sendMessage(chatId, "✅ Вы в магазине *" + shop.getName() + "*\n\n" +
                 (shop.getDescription() != null ? shop.getDescription() : ""));
 
-        showMainMenu(chatId);
+        /* Обновляем меню-кнопку*/
+        bot.setMenuButton(chatId);
     }
 
-    private void showMainMenu(Long chatId) {
-        Long shopId = stateManager.getSelectedShop(chatId);
-        if (shopId == null) {
-            showShopSelection(chatId);
-            return;
-        }
-
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
-        List<InlineKeyboardButton> row1 = new ArrayList<>();
-        row1.add(createButton("🛍 Каталог", "menu_catalog"));
-        row1.add(createButton("💬 Спросить AI", "menu_ai"));
-        rows.add(row1);
-
-        List<InlineKeyboardButton> row2 = new ArrayList<>();
-        row2.add(createButton("🔄 Сменить магазин", "menu_change_shop"));
-        rows.add(row2);
-
-        List<InlineKeyboardButton> row3 = new ArrayList<>();
-        row3.add(createButton("📞 Помощь", "menu_help"));
-        rows.add(row3);
-
-        keyboard.setKeyboard(rows);
-
-        bot.sendMessageWithKeyboard(chatId, "Выберите действие:", keyboard);
-    }
-
+    /* Показ каталога выбранного магазина*/
     private void showCatalog(Long chatId) {
         Long shopId = stateManager.getSelectedShop(chatId);
         if (shopId == null) {
@@ -182,7 +177,14 @@ public class MessageHandlerImpl implements MessageHandler {
         bot.sendMessage(chatId, sb.toString());
     }
 
+    /* Начало диалога с AI — переводим пользователя в состояние ожидания вопроса*/
     private void startAiDialog(Long chatId) {
+        Long shopId = stateManager.getSelectedShop(chatId);
+        if (shopId == null) {
+            showShopSelection(chatId);
+            return;
+        }
+
         stateManager.setState(chatId, UserStateManager.STATE_ASK_AI);
 
         InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
@@ -198,6 +200,7 @@ public class MessageHandlerImpl implements MessageHandler {
                 keyboard);
     }
 
+    /* Отправка вопроса в AI и получение ответа*/
     private void handleAiQuestion(Long chatId, String question) {
         Long shopId = stateManager.getSelectedShop(chatId);
         stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
@@ -212,10 +215,12 @@ public class MessageHandlerImpl implements MessageHandler {
         bot.sendMessage(chatId, reply);
     }
 
+    /* Вспомогательный метод создания inline-кнопки*/
     private InlineKeyboardButton createButton(String text, String callbackData) {
         InlineKeyboardButton button = new InlineKeyboardButton();
         button.setText(text);
         button.setCallbackData(callbackData);
         return button;
     }
+
 }

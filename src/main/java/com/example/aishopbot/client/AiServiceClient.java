@@ -20,7 +20,7 @@ import java.util.List;
 @Component
 public class AiServiceClient {
 
-    @Value("${ai.service.url}")
+    @Value("${ai.service.url:http://localhost:8000}")
     private String aiServiceUrl;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -29,10 +29,11 @@ public class AiServiceClient {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public String ask(String message, String systemPrompt) {
+    public String ask(String message, String systemPrompt, Long shopId) {
         try {
             ObjectNode payload = objectMapper.createObjectNode();
             payload.put("message", message);
+            payload.put("shop_id", shopId);
             if (systemPrompt != null && !systemPrompt.isEmpty()) {
                 payload.put("system_prompt", systemPrompt);
             }
@@ -41,11 +42,11 @@ public class AiServiceClient {
                     .uri(URI.create(aiServiceUrl + "/chat"))
                     .header("Content-Type", "application/json; charset=UTF-8")
                     .timeout(Duration.ofSeconds(60))
-                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString(), java.nio.charset.StandardCharsets.UTF_8))
+                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString(), StandardCharsets.UTF_8))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request,
-                    HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
             if (response.statusCode() != 200) {
                 log.error("AI-сервис вернул {}: {}", response.statusCode(), response.body());
@@ -68,6 +69,7 @@ public class AiServiceClient {
             for (Product p : products) {
                 var node = arr.addObject();
                 node.put("id", p.getId());
+                node.put("shop_id", p.getShopId());
                 node.put("name", p.getName());
                 node.put("description", p.getDescription());
                 node.put("price", p.getPrice().doubleValue());
@@ -88,5 +90,4 @@ public class AiServiceClient {
             log.error("Ошибка индексации товаров: {}", e.getMessage(), e);
         }
     }
-
 }

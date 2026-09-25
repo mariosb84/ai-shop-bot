@@ -1,13 +1,16 @@
 import os
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import (
+    Distance, VectorParams, PointStruct,
+    Filter, FieldCondition, MatchValue
+)
 
 from .embeddings import embed_text
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 COLLECTION_NAME = "products"
-VECTOR_SIZE = 384  # размер вектора для paraphrase-multilingual-MiniLM-L12-v2
+VECTOR_SIZE = 384
 
 _client = None
 
@@ -31,9 +34,6 @@ def ensure_collection():
 
 
 def index_products(products: list[dict]):
-    """
-    products: [{"id": 1, "name": "...", "description": "...", "price": 1500}, ...]
-    """
     client = get_client()
     ensure_collection()
 
@@ -41,19 +41,32 @@ def index_products(products: list[dict]):
     for p in products:
         text = f"{p['name']}. {p.get('description', '')}"
         vector = embed_text(text)
-        points.append(PointStruct(id=p["id"], vector=vector, payload=p))
+        points.append(PointStruct(
+            id=p["id"],
+            vector=vector,
+            payload={
+                "id": p["id"],
+                "shop_id": p["shop_id"],
+                "name": p["name"],
+                "description": p.get("description", ""),
+                "price": p["price"],
+            }
+        ))
 
     client.upsert(collection_name=COLLECTION_NAME, points=points)
-    print(f"Проиндексировано {len(points)} товаров")
+    print(f"✅ Проиндексировано {len(points)} товаров")
 
 
-def search_products(query: str, limit: int = 5) -> list[dict]:
+def search_products(query: str, shop_id: int, limit: int = 5) -> list[dict]:
     client = get_client()
     query_vector = embed_text(query)
 
     results = client.query_points(
         collection_name=COLLECTION_NAME,
         query=query_vector,
+        query_filter=Filter(
+            must=[FieldCondition(key="shop_id", match=MatchValue(value=shop_id))]
+        ),
         limit=limit,
     ).points
     return [hit.payload for hit in results]

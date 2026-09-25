@@ -9,6 +9,7 @@ app = FastAPI(title="AI Shop Assistant")
 
 class ChatRequest(BaseModel):
     message: str
+    shop_id: int
     system_prompt: str | None = None
 
 
@@ -18,6 +19,7 @@ class ChatResponse(BaseModel):
 
 class ProductItem(BaseModel):
     id: int
+    shop_id: int
     name: str
     description: str | None = ""
     price: float
@@ -42,20 +44,10 @@ async def index(request: IndexRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/search")
-async def search(request: ChatRequest):
-    try:
-        results = search_products(request.message, limit=5)
-        return {"products": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        # Ищем релевантные товары через RAG
-        relevant = search_products(request.message, limit=5)
+        relevant = search_products(request.message, shop_id=request.shop_id, limit=5)
 
         if relevant:
             catalog = "\n".join(

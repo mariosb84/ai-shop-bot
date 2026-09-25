@@ -29,4 +29,6 @@ public class Product {
     @Column(nullable = false)
     private Boolean active = true;
 
+    @Column(name = "shop_id")
+    private Long shopId;
 }

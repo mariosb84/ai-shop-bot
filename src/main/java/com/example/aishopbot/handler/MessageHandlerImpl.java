@@ -2,7 +2,9 @@ package com.example.aishopbot.handler;
 
 import com.example.aishopbot.bot.AiShopBot;
 import com.example.aishopbot.client.AiServiceClient;
+import com.example.aishopbot.domain.Shop;
 import com.example.aishopbot.repository.ProductRepository;
+import com.example.aishopbot.repository.ShopRepository;
 import com.example.aishopbot.state.UserStateManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -23,15 +25,18 @@ public class MessageHandlerImpl implements MessageHandler {
     private final AiShopBot bot;
     private final UserStateManager stateManager;
     private final ProductRepository productRepository;
+    private final ShopRepository shopRepository;
     private final AiServiceClient aiServiceClient;
 
     public MessageHandlerImpl(@Lazy AiShopBot bot,
                               UserStateManager stateManager,
                               ProductRepository productRepository,
+                              ShopRepository shopRepository,
                               AiServiceClient aiServiceClient) {
         this.bot = bot;
         this.stateManager = stateManager;
         this.productRepository = productRepository;
+        this.shopRepository = shopRepository;
         this.aiServiceClient = aiServiceClient;
     }
 
@@ -45,15 +50,14 @@ public class MessageHandlerImpl implements MessageHandler {
 
         log.debug("Сообщение от {}: {} (state={})", chatId, text, state);
 
-        // Если ждём вопрос для AI
         if (UserStateManager.STATE_ASK_AI.equals(state)) {
             handleAiQuestion(chatId, text);
             return;
         }
 
         switch (text) {
-            case "/start" -> handleStart(chatId);
-            default -> handleDefault(chatId);
+            case "/start" -> showShopSelection(chatId);
+            default -> bot.sendMessage(chatId, "Напишите /start");
         }
     }
 
@@ -64,20 +68,74 @@ public class MessageHandlerImpl implements MessageHandler {
 
         log.debug("Callback от {}: {}", chatId, data);
 
+        // Выбор магазина (формат: shop_1, shop_2)
+        if (data.startsWith("shop_")) {
+            Long shopId = Long.parseLong(data.substring(5));
+            selectShop(chatId, shopId);
+            return;
+        }
+
         switch (data) {
             case "menu_catalog" -> showCatalog(chatId);
             case "menu_ai" -> startAiDialog(chatId);
             case "menu_help" -> bot.sendMessage(chatId, "📞 Если нужна помощь — напишите: support@example.com");
+            case "menu_change_shop" -> showShopSelection(chatId);
             case "ai_cancel" -> {
                 stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
-                bot.sendMessage(chatId, "Ок, возвращаемся в меню. Напишите /start");
+                showMainMenu(chatId);
             }
             default -> bot.sendMessage(chatId, "Неизвестная команда");
         }
     }
 
-    private void handleStart(Long chatId) {
+    private void showShopSelection(Long chatId) {
+        stateManager.setState(chatId, UserStateManager.STATE_SHOP_MENU);
+        stateManager.clearSelectedShop(chatId);
+
+        List<Shop> shops = shopRepository.findAllByActiveTrue();
+        if (shops.isEmpty()) {
+            bot.sendMessage(chatId, "❌ Магазины не настроены");
+            return;
+        }
+
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        for (Shop shop : shops) {
+            List<InlineKeyboardButton> row = new ArrayList<>();
+            row.add(createButton("🛍 " + shop.getName(), "shop_" + shop.getId()));
+            rows.add(row);
+        }
+
+        keyboard.setKeyboard(rows);
+
+        bot.sendMessageWithKeyboard(chatId,
+                "👋 Здравствуйте! Выберите магазин:",
+                keyboard);
+    }
+
+    private void selectShop(Long chatId, Long shopId) {
+        Shop shop = shopRepository.findById(shopId).orElse(null);
+        if (shop == null) {
+            bot.sendMessage(chatId, "❌ Магазин не найден");
+            return;
+        }
+
+        stateManager.setSelectedShop(chatId, shopId);
         stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
+
+        bot.sendMessage(chatId, "✅ Вы в магазине *" + shop.getName() + "*\n\n" +
+                (shop.getDescription() != null ? shop.getDescription() : ""));
+
+        showMainMenu(chatId);
+    }
+
+    private void showMainMenu(Long chatId) {
+        Long shopId = stateManager.getSelectedShop(chatId);
+        if (shopId == null) {
+            showShopSelection(chatId);
+            return;
+        }
 
         InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -88,30 +146,33 @@ public class MessageHandlerImpl implements MessageHandler {
         rows.add(row1);
 
         List<InlineKeyboardButton> row2 = new ArrayList<>();
-        row2.add(createButton("📞 Помощь", "menu_help"));
+        row2.add(createButton("🔄 Сменить магазин", "menu_change_shop"));
         rows.add(row2);
+
+        List<InlineKeyboardButton> row3 = new ArrayList<>();
+        row3.add(createButton("📞 Помощь", "menu_help"));
+        rows.add(row3);
 
         keyboard.setKeyboard(rows);
 
-        bot.sendMessageWithKeyboard(chatId,
-                "👋 Здравствуйте! Это *AI-магазин*.\n\n" +
-                        "Выберите действие:",
-                keyboard);
-    }
-
-    private void handleDefault(Long chatId) {
-        bot.sendMessage(chatId, "Пока я в разработке 🚧\nНапишите /start");
+        bot.sendMessageWithKeyboard(chatId, "Выберите действие:", keyboard);
     }
 
     private void showCatalog(Long chatId) {
-        var products = productRepository.findAllByActiveTrue();
+        Long shopId = stateManager.getSelectedShop(chatId);
+        if (shopId == null) {
+            showShopSelection(chatId);
+            return;
+        }
+
+        var products = productRepository.findAllByShopIdAndActiveTrue(shopId);
 
         if (products.isEmpty()) {
             bot.sendMessage(chatId, "🛍 Каталог пока пуст.");
             return;
         }
 
-        StringBuilder sb = new StringBuilder("🛍 *Наш каталог:*\n\n");
+        StringBuilder sb = new StringBuilder("🛍 *Каталог:*\n\n");
         for (var p : products) {
             sb.append("▪️ *").append(p.getName()).append("*\n")
                     .append("   ").append(p.getDescription()).append("\n")
@@ -138,9 +199,16 @@ public class MessageHandlerImpl implements MessageHandler {
     }
 
     private void handleAiQuestion(Long chatId, String question) {
+        Long shopId = stateManager.getSelectedShop(chatId);
         stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
+
+        if (shopId == null) {
+            showShopSelection(chatId);
+            return;
+        }
+
         bot.sendMessage(chatId, "🤔 Думаю над ответом...");
-        String reply = aiServiceClient.ask(question, null);
+        String reply = aiServiceClient.ask(question, null, shopId);
         bot.sendMessage(chatId, reply);
     }
 
@@ -150,5 +218,4 @@ public class MessageHandlerImpl implements MessageHandler {
         button.setCallbackData(callbackData);
         return button;
     }
-
 }

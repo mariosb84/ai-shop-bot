@@ -23,6 +23,7 @@ class ProductItem(BaseModel):
     name: str
     description: str | None = ""
     price: float
+    image_url: str | None = ""
 
 
 class IndexRequest(BaseModel):

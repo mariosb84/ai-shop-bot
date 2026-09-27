@@ -12,6 +12,8 @@ import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
 
 import java.util.List;
 
@@ -92,6 +94,23 @@ public class AiShopBot extends TelegramLongPollingBot {
             log.info("Меню-кнопка установлена для chatId: {}", chatId);
         } catch (TelegramApiException e) {
             log.error("Ошибка установки меню: {}", e.getMessage());
+        }
+    }
+
+    /* Отправка фото с подписью и inline-кнопками */
+    public void sendPhoto(Long chatId, String imageUrl, String caption, InlineKeyboardMarkup keyboard) {
+        SendPhoto photo = new SendPhoto();
+        photo.setChatId(chatId.toString());
+        photo.setPhoto(new InputFile(imageUrl));
+        photo.setCaption(caption);
+        photo.setParseMode("Markdown");
+        if (keyboard != null) {
+            photo.setReplyMarkup(keyboard);
+        }
+        try {
+            execute(photo);
+        } catch (TelegramApiException e) {
+            log.error("Ошибка отправки фото: {}", e.getMessage());
         }
     }
 

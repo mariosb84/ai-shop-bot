@@ -50,6 +50,7 @@ def index_products(products: list[dict]):
                 "name": p["name"],
                 "description": p.get("description", ""),
                 "price": p["price"],
+                "image_url": p.get("image_url", ""),
             }
         ))
 

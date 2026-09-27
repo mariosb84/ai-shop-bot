@@ -13,6 +13,7 @@ public class UserStateManager {
     public static final String STATE_CATALOG = "CATALOG";
     public static final String STATE_ASK_AI = "ASK_AI";
 
+    private final Map<Long, Integer> catalogPages = new ConcurrentHashMap<>();
     private final Map<Long, String> userStates = new ConcurrentHashMap<>();
     private final Map<Long, Long> selectedShop = new ConcurrentHashMap<>();
 
@@ -39,4 +40,17 @@ public class UserStateManager {
     public void clearSelectedShop(Long chatId) {
         selectedShop.remove(chatId);
     }
+
+    public void setCatalogPage(Long chatId, int page) {
+        catalogPages.put(chatId, page);
+    }
+
+    public int getCatalogPage(Long chatId) {
+        return catalogPages.getOrDefault(chatId, 0);
+    }
+
+    public void clearCatalogPage(Long chatId) {
+        catalogPages.remove(chatId);
+    }
+
 }

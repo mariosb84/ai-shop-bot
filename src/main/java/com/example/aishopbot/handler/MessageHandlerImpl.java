@@ -26,6 +26,7 @@ public class MessageHandlerImpl implements MessageHandler {
     private final ProductRepository productRepository;
     private final ShopRepository shopRepository;
     private final AiServiceClient aiServiceClient;
+    private static final int CARDS_PER_PAGE = 3;
 
     public MessageHandlerImpl(@Lazy AiShopBot bot,
                               UserStateManager stateManager,
@@ -91,6 +92,26 @@ public class MessageHandlerImpl implements MessageHandler {
             return;
         }
 
+        /* Навигация по каталогу*/
+        if (data.startsWith("catalog_page_")) {
+            Long shopId = stateManager.getSelectedShop(chatId);
+            if (shopId == null) {
+                showShopSelection(chatId);
+                return;
+            }
+            int page = Integer.parseInt(data.substring("catalog_page_".length()));
+            stateManager.setCatalogPage(chatId, page);
+            sendCatalogPage(chatId, shopId, page);
+            return;
+        }
+
+       /* Покупка товара (заглушка — реализуем позже)*/
+        if (data.startsWith("buy_")) {
+            Long productId = Long.parseLong(data.substring(4));
+            bot.sendMessage(chatId, "🛒 Оформление заказа скоро появится!");
+            return;
+        }
+
         switch (data) {
             case "menu_catalog" -> showCatalog(chatId);
             case "menu_ai" -> startAiDialog(chatId);
@@ -153,6 +174,8 @@ public class MessageHandlerImpl implements MessageHandler {
     }
 
     /* Показ каталога выбранного магазина*/
+
+    /* Показ каталога — по 3 карточки за раз*/
     private void showCatalog(Long chatId) {
         Long shopId = stateManager.getSelectedShop(chatId);
         if (shopId == null) {
@@ -160,6 +183,12 @@ public class MessageHandlerImpl implements MessageHandler {
             return;
         }
 
+        stateManager.setCatalogPage(chatId, 0);
+        sendCatalogPage(chatId, shopId, 0);
+    }
+
+    /* Отправка одной страницы каталога (3 товара)*/
+    private void sendCatalogPage(Long chatId, Long shopId, int page) {
         var products = productRepository.findAllByShopIdAndActiveTrue(shopId);
 
         if (products.isEmpty()) {
@@ -167,14 +196,73 @@ public class MessageHandlerImpl implements MessageHandler {
             return;
         }
 
-        StringBuilder sb = new StringBuilder("🛍 *Каталог:*\n\n");
-        for (var p : products) {
-            sb.append("▪️ *").append(p.getName()).append("*\n")
-                    .append("   ").append(p.getDescription()).append("\n")
-                    .append("   💰 ").append(p.getPrice()).append(" ₽\n\n");
+        int totalPages = (int) Math.ceil(products.size() / (double) CARDS_PER_PAGE);
+        int fromIndex = page * CARDS_PER_PAGE;
+        int toIndex = Math.min(fromIndex + CARDS_PER_PAGE, products.size());
+
+        if (fromIndex >= products.size()) {
+            bot.sendMessage(chatId, "Больше товаров нет");
+            return;
         }
 
-        bot.sendMessage(chatId, sb.toString());
+        var pageProducts = products.subList(fromIndex, toIndex);
+
+        bot.sendMessage(chatId, String.format("🛍 *Каталог* (страница %d из %d)",
+                page + 1, totalPages));
+
+        for (var p : pageProducts) {
+            sendProductCard(chatId, p);
+        }
+
+        /* Кнопки навигации*/
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        List<InlineKeyboardButton> navRow = new ArrayList<>();
+
+        if (page > 0) {
+            navRow.add(createButton("⬅️ Назад", "catalog_page_" + (page - 1)));
+        }
+        if (toIndex < products.size()) {
+            navRow.add(createButton("Показать ещё ➡️", "catalog_page_" + (page + 1)));
+        }
+
+        if (!navRow.isEmpty()) {
+            rows.add(navRow);
+            keyboard.setKeyboard(rows);
+
+            org.telegram.telegrambots.meta.api.methods.send.SendMessage msg =
+                    new org.telegram.telegrambots.meta.api.methods.send.SendMessage();
+            msg.setChatId(chatId.toString());
+            msg.setText("Навигация по каталогу:");
+            msg.setReplyMarkup(keyboard);
+            try {
+                /* используем bot.sendMessageWithKeyboard*/
+                bot.sendMessageWithKeyboard(chatId, "Навигация по каталогу:", keyboard);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    /* Отправка одной карточки товара*/
+    private void sendProductCard(Long chatId, com.example.aishopbot.domain.Product p) {
+        StringBuilder caption = new StringBuilder();
+        caption.append("*").append(p.getName()).append("*\n\n");
+        if (p.getDescription() != null) {
+            caption.append(p.getDescription()).append("\n\n");
+        }
+        caption.append("💰 *").append(p.getPrice()).append(" ₽*");
+
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        List<InlineKeyboardButton> row = new ArrayList<>();
+        row.add(createButton("🛒 Купить", "buy_" + p.getId()));
+        rows.add(row);
+        keyboard.setKeyboard(rows);
+
+        if (p.getImageUrl() != null && !p.getImageUrl().isEmpty()) {
+            bot.sendPhoto(chatId, p.getImageUrl(), caption.toString(), keyboard);
+        } else {
+            bot.sendMessageWithKeyboard(chatId, caption.toString(), keyboard);
+        }
     }
 
     /* Начало диалога с AI — переводим пользователя в состояние ожидания вопроса*/

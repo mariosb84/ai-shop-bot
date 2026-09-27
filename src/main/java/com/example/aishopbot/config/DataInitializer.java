@@ -47,13 +47,20 @@ public class DataInitializer implements CommandLineRunner {
 
         if (productRepository.count() == 0) {
             productRepository.saveAll(List.of(
-                    createProduct("Футболка Classic", "Хлопок 100%, размеры S-XL, цвет белый/чёрный", "1500", clothesShop.getId()),
-                    createProduct("Джинсы Slim", "Деним, размеры 28-36, узкий крой", "3500", clothesShop.getId()),
-                    createProduct("Кроссовки Run", "Для бега, амортизация, размеры 36-45", "5000", clothesShop.getId()),
-                    createProduct("Худи Oversize", "Тёплое, свободный крой, цвет серый", "2800", clothesShop.getId()),
-                    createProduct("Крем для лица", "Увлажняющий, SPF 30, 50мл", "1200", cosmeticsShop.getId()),
-                    createProduct("Помада матовая", "Стойкая, оттенок Nude", "800", cosmeticsShop.getId()),
-                    createProduct("Шампунь", "Для сухих волос, 400мл", "600", cosmeticsShop.getId())
+                    createProduct("Футболка Classic", "Хлопок 100%, размеры S-XL, цвет белый/чёрный", "1500", clothesShop.getId(),
+                            "https://picsum.photos/seed/tshirt/600/400"),
+                    createProduct("Джинсы Slim", "Деним, размеры 28-36, узкий крой", "3500", clothesShop.getId(),
+                            "https://picsum.photos/seed/jeans/600/400"),
+                    createProduct("Кроссовки Run", "Для бега, амортизация, размеры 36-45", "5000", clothesShop.getId(),
+                            "https://picsum.photos/seed/sneakers/600/400"),
+                    createProduct("Худи Oversize", "Тёплое, свободный крой, цвет серый", "2800", clothesShop.getId(),
+                            "https://picsum.photos/seed/hoodie/600/400"),
+                    createProduct("Крем для лица", "Увлажняющий, SPF 30, 50мл", "1200", cosmeticsShop.getId(),
+                            "https://picsum.photos/seed/cream/600/400"),
+                    createProduct("Помада матовая", "Стойкая, оттенок Nude", "800", cosmeticsShop.getId(),
+                            "https://picsum.photos/seed/lipstick/600/400"),
+                    createProduct("Шампунь", "Для сухих волос, 400мл", "600", cosmeticsShop.getId(),
+                            "https://picsum.photos/seed/shampoo/600/400")
             ));
             log.info("✅ Загружено {} тестовых товаров", productRepository.count());
         } else {
@@ -64,13 +71,15 @@ public class DataInitializer implements CommandLineRunner {
         log.info("📦 Индексация товаров в Qdrant запущена");
     }
 
-    private Product createProduct(String name, String description, String price, Long shopId) {
+    private Product createProduct(String name, String description, String price, Long shopId, String imageUrl) {
         Product p = new Product();
         p.setName(name);
         p.setDescription(description);
         p.setPrice(new BigDecimal(price));
         p.setActive(true);
         p.setShopId(shopId);
+        p.setImageUrl(imageUrl);
         return p;
     }
+
 }

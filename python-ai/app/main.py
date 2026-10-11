@@ -2,7 +2,12 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from .llm import chat_with_deepseek
-from .qdrant_client import ensure_collection, index_products, search_products
+from .qdrant_client import (
+    ensure_collection,
+    index_products,
+    search_products,
+    clear_shop_products,
+)
 
 app = FastAPI(title="AI Shop Assistant")
 
@@ -13,8 +18,17 @@ class ChatRequest(BaseModel):
     system_prompt: str | None = None
 
 
+class ProductShort(BaseModel):
+    id: int
+    name: str
+    description: str | None = ""
+    price: float
+    image_url: str | None = ""
+
+
 class ChatResponse(BaseModel):
     reply: str
+    products: list[ProductShort]
 
 
 class ProductItem(BaseModel):
@@ -28,6 +42,10 @@ class ProductItem(BaseModel):
 
 class IndexRequest(BaseModel):
     products: list[ProductItem]
+
+
+class ClearShopRequest(BaseModel):
+    shop_id: int
 
 
 @app.get("/health")
@@ -45,10 +63,19 @@ async def index(request: IndexRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/clear-shop")
+async def clear_shop(request: ClearShopRequest):
+    try:
+        clear_shop_products(request.shop_id)
+        return {"cleared": True, "shop_id": request.shop_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        relevant = search_products(request.message, shop_id=request.shop_id, limit=5)
+        relevant = search_products(request.message, shop_id=request.shop_id, limit=10)
 
         if relevant:
             catalog = "\n".join(
@@ -68,7 +95,19 @@ async def chat(request: ChatRequest):
             )
 
         reply = await chat_with_deepseek(request.message, system_prompt)
-        return ChatResponse(reply=reply)
+
+        products_short = [
+            ProductShort(
+                id=p["id"],
+                name=p["name"],
+                description=p.get("description", ""),
+                price=p["price"],
+                image_url=p.get("image_url", ""),
+            )
+            for p in relevant
+        ]
+
+        return ChatResponse(reply=reply, products=products_short)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

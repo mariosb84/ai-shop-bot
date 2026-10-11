@@ -1,5 +1,6 @@
 package com.example.aishopbot.client;
 
+import com.example.aishopbot.domain.AiChatResponse;
 import com.example.aishopbot.domain.Product;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,7 +30,7 @@ public class AiServiceClient {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public String ask(String message, String systemPrompt, Long shopId) {
+    public AiChatResponse ask(String message, String systemPrompt, Long shopId) {
         try {
             ObjectNode payload = objectMapper.createObjectNode();
             payload.put("message", message);
@@ -50,15 +51,20 @@ public class AiServiceClient {
 
             if (response.statusCode() != 200) {
                 log.error("AI-сервис вернул {}: {}", response.statusCode(), response.body());
-                return "❌ AI временно недоступен. Попробуйте позже.";
+                AiChatResponse fallback = new AiChatResponse();
+                fallback.setReply("❌ AI временно недоступен. Попробуйте позже.");
+                fallback.setProducts(List.of());
+                return fallback;
             }
 
-            JsonNode root = objectMapper.readTree(response.body());
-            return root.path("reply").asText();
+            return objectMapper.readValue(response.body(), AiChatResponse.class);
 
         } catch (Exception e) {
             log.error("Ошибка вызова AI-сервиса: {}", e.getMessage(), e);
-            return "❌ Не удалось связаться с AI. Проверьте соединение.";
+            AiChatResponse fallback = new AiChatResponse();
+            fallback.setReply("❌ Не удалось связаться с AI. Проверьте соединение.");
+            fallback.setProducts(List.of());
+            return fallback;
         }
     }
 

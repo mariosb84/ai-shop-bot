@@ -2,6 +2,7 @@ package com.example.aishopbot.handler;
 
 import com.example.aishopbot.bot.AiShopBot;
 import com.example.aishopbot.client.AiServiceClient;
+import com.example.aishopbot.domain.AiChatResponse;
 import com.example.aishopbot.domain.Shop;
 import com.example.aishopbot.repository.ProductRepository;
 import com.example.aishopbot.repository.ShopRepository;
@@ -109,6 +110,32 @@ public class MessageHandlerImpl implements MessageHandler {
         if (data.startsWith("buy_")) {
             Long productId = Long.parseLong(data.substring(4));
             bot.sendMessage(chatId, "🛒 Оформление заказа скоро появится!");
+            return;
+        }
+
+        /* Просмотр карточки товара*/
+        if (data.startsWith("view_product_")) {
+            Long productId = Long.parseLong(data.substring("view_product_".length()));
+            var product = productRepository.findById(productId).orElse(null);
+            if (product == null) {
+                bot.sendMessage(chatId, "❌ Товар не найден");
+                return;
+            }
+            sendProductCard(chatId, product);
+            return;
+        }
+
+       /* Продолжить диалог с AI*/
+        if ("ai_continue".equals(data)) {
+            stateManager.setState(chatId, UserStateManager.STATE_ASK_AI);
+            bot.sendMessage(chatId, "💬 Задайте следующий вопрос:");
+            return;
+        }
+
+       /* Завершить диалог*/
+        if ("ai_finish".equals(data)) {
+            stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
+            bot.sendMessage(chatId, "✅ Диалог завершён. Выберите команду из меню 👇");
             return;
         }
 
@@ -291,16 +318,42 @@ public class MessageHandlerImpl implements MessageHandler {
     /* Отправка вопроса в AI и получение ответа*/
     private void handleAiQuestion(Long chatId, String question) {
         Long shopId = stateManager.getSelectedShop(chatId);
-        stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
-
         if (shopId == null) {
             showShopSelection(chatId);
             return;
         }
 
         bot.sendMessage(chatId, "🤔 Думаю над ответом...");
-        String reply = aiServiceClient.ask(question, null, shopId);
-        bot.sendMessage(chatId, reply);
+
+        AiChatResponse response = aiServiceClient.ask(question, null, shopId);
+
+        /* Собираем кнопки*/
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        /* Кнопки с товарами (до 3)*/
+        if (response.getProducts() != null && !response.getProducts().isEmpty()) {
+            for (var p : response.getProducts()) {
+                List<InlineKeyboardButton> row = new ArrayList<>();
+                row.add(createButton("🛍 " + p.getName(), "view_product_" + p.getId()));
+                rows.add(row);
+            }
+        } else {
+            /* Ничего не нашли — предложить каталог*/
+            List<InlineKeyboardButton> row = new ArrayList<>();
+            row.add(createButton("🛍 Каталог", "menu_catalog"));
+            rows.add(row);
+        }
+
+        /* Кнопки управления диалогом*/
+        List<InlineKeyboardButton> controlRow = new ArrayList<>();
+        controlRow.add(createButton("💬 Продолжить", "ai_continue"));
+        controlRow.add(createButton("❌ Завершить", "ai_finish"));
+        rows.add(controlRow);
+
+        keyboard.setKeyboard(rows);
+
+        bot.sendMessageWithKeyboard(chatId, response.getReply(), keyboard);
     }
 
     /* Вспомогательный метод создания inline-кнопки*/

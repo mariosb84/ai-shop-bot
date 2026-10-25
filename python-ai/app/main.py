@@ -21,6 +21,7 @@ class ChatRequest(BaseModel):
 class ProductShort(BaseModel):
     id: int
     name: str
+    category: str | None = ""
     description: str | None = ""
     price: float
     image_url: str | None = ""
@@ -35,6 +36,7 @@ class ProductItem(BaseModel):
     id: int
     shop_id: int
     name: str
+    category: str | None = ""
     description: str | None = ""
     price: float
     image_url: str | None = ""
@@ -75,17 +77,24 @@ async def clear_shop(request: ClearShopRequest):
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        relevant = search_products(request.message, shop_id=request.shop_id, limit=10)
+        relevant = search_products(request.message, shop_id=request.shop_id, limit=3)
 
         if relevant:
-            catalog = "\n".join(
-                f"- {p['name']}: {p.get('description', '')} ({p['price']} ₽)"
-                for p in relevant
-            )
+            catalog_lines = []
+            for p in relevant:
+                line = f"- {p['name']}"
+                if p.get("category"):
+                    line += f" [категория: {p['category']}]"
+                line += f": {p.get('description', '')} ({p['price']} ₽)"
+                catalog_lines.append(line)
+
+            catalog = "\n".join(catalog_lines)
             system_prompt = (
                 "Ты — вежливый консультант интернет-магазина. "
                 "Отвечай кратко, дружелюбно и по делу. "
                 "Вот релевантные товары из каталога:\n" + catalog + "\n\n"
+                "ВАЖНО: указывай только те цены, что даны в каталоге выше. "
+                "Не придумывай товары и цены, которых нет. "
                 "Если подходящих товаров нет — скажи об этом честно."
             )
         else:
@@ -100,6 +109,7 @@ async def chat(request: ChatRequest):
             ProductShort(
                 id=p["id"],
                 name=p["name"],
+                category=p.get("category", ""),
                 description=p.get("description", ""),
                 price=p["price"],
                 image_url=p.get("image_url", ""),

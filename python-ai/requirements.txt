@@ -5,8 +5,5 @@ httpx
 pydantic
 qdrant-client
 fastembed
-pandas
-openpyxl
-psycopg2-binary
-requests
 rank-bm25
+pymorphy3

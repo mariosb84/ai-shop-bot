@@ -31,4 +31,7 @@ public class Product {
 
     @Column(name = "shop_id")
     private Long shopId;
+
+    @Column(length = 100)
+    private String category;
 }

@@ -42,6 +42,8 @@ def read_excel(file_path: str) -> pd.DataFrame:
         df["description"] = ""
     if "image_url" not in df.columns:
         df["image_url"] = ""
+    if "category" not in df.columns:
+            df["category"] = ""
 
     # Убираем пустые строки
     df = df.dropna(subset=["name", "price"])
@@ -84,12 +86,13 @@ def insert_new_products(shop_id: int, df: pd.DataFrame) -> list[dict]:
     for _, row in df.iterrows():
         cur.execute(
             """
-            INSERT INTO products (name, description, price, image_url, active, shop_id)
-            VALUES (%s, %s, %s, %s, TRUE, %s)
+            INSERT INTO products (name, category, description, price, image_url, active, shop_id)
+            VALUES (%s, %s, %s, %s, %s, TRUE, %s)
             RETURNING id
             """,
             (
                 str(row["name"]).strip(),
+                str(row["category"]).strip() if pd.notna(row["category"]) else "",
                 str(row["description"]).strip() if pd.notna(row["description"]) else "",
                 float(row["price"]),
                 str(row["image_url"]).strip() if pd.notna(row["image_url"]) else "",
@@ -101,6 +104,7 @@ def insert_new_products(shop_id: int, df: pd.DataFrame) -> list[dict]:
             "id": new_id,
             "shop_id": shop_id,
             "name": str(row["name"]).strip(),
+            "category": str(row["category"]).strip() if pd.notna(row["category"]) else "",
             "description": str(row["description"]).strip() if pd.notna(row["description"]) else "",
             "price": float(row["price"]),
             "image_url": str(row["image_url"]).strip() if pd.notna(row["image_url"]) else "",

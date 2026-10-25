@@ -17,6 +17,7 @@ public class AiChatResponse {
     public static class ProductShort {
         private Long id;
         private String name;
+        private String category;
         private String description;
         private Double price;
 

@@ -77,6 +77,7 @@ public class AiServiceClient {
                 node.put("id", p.getId());
                 node.put("shop_id", p.getShopId());
                 node.put("name", p.getName());
+                node.put("category", p.getCategory());
                 node.put("description", p.getDescription());
                 node.put("price", p.getPrice().doubleValue());
             }

@@ -273,6 +273,9 @@ public class MessageHandlerImpl implements MessageHandler {
     private void sendProductCard(Long chatId, com.example.aishopbot.domain.Product p) {
         StringBuilder caption = new StringBuilder();
         caption.append("*").append(p.getName()).append("*\n\n");
+        if (p.getCategory() != null && !p.getCategory().isEmpty()) {
+            caption.append("📂 ").append(p.getCategory()).append("\n\n");
+        }
         if (p.getDescription() != null) {
             caption.append(p.getDescription()).append("\n\n");
         }

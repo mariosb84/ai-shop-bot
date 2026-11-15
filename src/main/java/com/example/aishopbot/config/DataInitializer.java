@@ -24,49 +24,58 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        /* Создаём магазины, если их нет */
+        Shop parfumShop;
         Shop clothesShop;
-        Shop cosmeticsShop;
 
         if (shopRepository.count() == 0) {
+            /* Парфюмерия — основной магазин для реального кейса */
+            parfumShop = new Shop();
+            parfumShop.setName("Парфюмерия");
+            parfumShop.setDescription("Нишевая и селективная парфюмерия");
+            parfumShop.setActive(true);
+            parfumShop = shopRepository.save(parfumShop);
+
+            /* Одежда — скрываем, оставляем для тестов */
             clothesShop = new Shop();
             clothesShop.setName("Одежда+");
-            clothesShop.setDescription("Модная одежда и аксессуары");
+            clothesShop.setDescription("Модная одежда и аксессуары (скрыт)");
+            clothesShop.setActive(false);
             clothesShop = shopRepository.save(clothesShop);
 
-            cosmeticsShop = new Shop();
-            cosmeticsShop.setName("Косметика-Мир");
-            cosmeticsShop.setDescription("Косметика и уход за собой");
-            cosmeticsShop = shopRepository.save(cosmeticsShop);
-
-            log.info("✅ Создано 2 магазина");
+            log.info("✅ Создано 2 магазина: Парфюмерия (активна), Одежда+ (скрыт)");
         } else {
             List<Shop> shops = shopRepository.findAll();
-            clothesShop = shops.get(0);
-            cosmeticsShop = shops.size() > 1 ? shops.get(1) : shops.get(0);
+            parfumShop = shops.stream()
+                    .filter(s -> "Парфюмерия".equals(s.getName()))
+                    .findFirst()
+                    .orElse(shops.get(0));
+            clothesShop = shops.stream()
+                    .filter(s -> "Одежда+".equals(s.getName()))
+                    .findFirst()
+                    .orElse(null);
         }
 
+        /* Загружаем тестовые товары, если их нет */
         if (productRepository.count() == 0) {
             productRepository.saveAll(List.of(
-                    createProduct("Футболка Classic", "Хлопок 100%, размеры S-XL, цвет белый/чёрный", "1500", clothesShop.getId(),
-                            "https://picsum.photos/seed/tshirt/600/400"),
-                    createProduct("Джинсы Slim", "Деним, размеры 28-36, узкий крой", "3500", clothesShop.getId(),
-                            "https://picsum.photos/seed/jeans/600/400"),
-                    createProduct("Кроссовки Run", "Для бега, амортизация, размеры 36-45", "5000", clothesShop.getId(),
-                            "https://picsum.photos/seed/sneakers/600/400"),
-                    createProduct("Худи Oversize", "Тёплое, свободный крой, цвет серый", "2800", clothesShop.getId(),
-                            "https://picsum.photos/seed/hoodie/600/400"),
-                    createProduct("Крем для лица", "Увлажняющий, SPF 30, 50мл", "1200", cosmeticsShop.getId(),
-                            "https://picsum.photos/seed/cream/600/400"),
-                    createProduct("Помада матовая", "Стойкая, оттенок Nude", "800", cosmeticsShop.getId(),
-                            "https://picsum.photos/seed/lipstick/600/400"),
-                    createProduct("Шампунь", "Для сухих волос, 400мл", "600", cosmeticsShop.getId(),
-                            "https://picsum.photos/seed/shampoo/600/400")
+                    createProduct("Bleu de Chanel EDP", "Древесно-фужерный, ноты: грейпфрут, ладан, сандал", "12500", parfumShop.getId(),
+                            "https://picsum.photos/seed/bleu/600/400"),
+                    createProduct("Dior Sauvage EDT", "Свежий фужерный, ноты: бергамот, перец, амброксан", "9800", parfumShop.getId(),
+                            "https://picsum.photos/seed/sauvage/600/400"),
+                    createProduct("Creed Aventus", "Фруктово-древесный, ноты: ананас, берёза, мускус", "45000", parfumShop.getId(),
+                            "https://picsum.photos/seed/aventus/600/400"),
+                    createProduct("Baccarat Rouge 540", "Амброво-древесный, ноты: шафран, жасмин, амбра", "32000", parfumShop.getId(),
+                            "https://picsum.photos/seed/baccarat/600/400"),
+                    createProduct("Tom Ford Oud Wood", "Древесно-восточный, ноты: уд, сандал, ваниль", "28500", parfumShop.getId(),
+                            "https://picsum.photos/seed/oud/600/400")
             ));
-            log.info("✅ Загружено {} тестовых товаров", productRepository.count());
+            log.info("✅ Загружено {} тестовых товаров для парфюмерии", productRepository.count());
         } else {
             log.info("Товары уже есть в БД, пропускаем загрузку");
         }
 
+        /* Индексируем товары в Qdrant */
         aiServiceClient.indexProducts(productRepository.findAll());
         log.info("📦 Индексация товаров в Qdrant запущена");
     }

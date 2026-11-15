@@ -1,5 +1,6 @@
 package com.example.aishopbot.domain;
 
+
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -22,6 +23,14 @@ public class Shop {
 
     @Column(nullable = false)
     private Boolean active = true;
+
+    /* Телефон оператора для связи с клиентом */
+    @Column(name = "operator_phone", length = 20)
+    private String operatorPhone;
+
+    /* ChatId админа магазина (кому слать уведомления о заказах) */
+    @Column(name = "admin_chat_id")
+    private Long adminChatId;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();

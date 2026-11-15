@@ -29,6 +29,9 @@ public class MessageHandlerImpl implements MessageHandler {
     private final AiServiceClient aiServiceClient;
     private static final int CARDS_PER_PAGE = 3;
 
+    @org.springframework.beans.factory.annotation.Value("${app.multi-shop-enabled:false}")
+    private boolean multiShopEnabled;
+
     public MessageHandlerImpl(@Lazy AiShopBot bot,
                               UserStateManager stateManager,
                               ProductRepository productRepository,
@@ -63,8 +66,28 @@ public class MessageHandlerImpl implements MessageHandler {
 
         /* Обработка команд*/
         switch (text) {
-            case "/start" -> showShopSelection(chatId);
-            case "/shop" -> showShopSelection(chatId);
+            case "/start" -> {
+                /* Если магазин уже выбран — не сбрасываем */
+                if (!stateManager.hasSelectedShop(chatId)) {
+                    showShopSelection(chatId);
+                } else {
+                    Long shopId = stateManager.getSelectedShop(chatId);
+                    Shop shop = shopRepository.findById(shopId).orElse(null);
+                    if (shop != null) {
+                        bot.sendMessage(chatId, "👋 С возвращением в *" + shop.getName() + "*\n\n" +
+                                "Напишите /catalog или /ai");
+                    } else {
+                        showShopSelection(chatId);
+                    }
+                }
+            }
+            case "/shop" -> {
+                if (multiShopEnabled) {
+                    showShopSelection(chatId);
+                } else {
+                    bot.sendMessage(chatId, "ℹ️ Выбор магазина отключён");
+                }
+            }
             case "/catalog" -> showCatalog(chatId);
             case "/ai" -> startAiDialog(chatId);
             case "/help" -> bot.sendMessage(chatId,
@@ -152,12 +175,28 @@ public class MessageHandlerImpl implements MessageHandler {
         }
     }
 
-    /* Показ списка магазинов для выбора*/
+    /* Показ списка магазинов или автовыбор, если магазин один */
     private void showShopSelection(Long chatId) {
+        /* Если мультимагазин выключен — автоматически выбираем единственный магазин */
+        if (!multiShopEnabled) {
+            List<Shop> shops = shopRepository.findAllByActiveTrue();
+            if (shops.isEmpty()) {
+                bot.sendMessage(chatId, "❌ Магазины не настроены");
+                return;
+            }
+            if (shops.size() == 1) {
+                selectShop(chatId, shops.get(0).getId());
+                return;
+            }
+            /* Если магазинов несколько, но флаг выключен — берём первый */
+            selectShop(chatId, shops.get(0).getId());
+            return;
+        }
+
+        /* Мультимагазин включён — показываем выбор */
         stateManager.setState(chatId, UserStateManager.STATE_SHOP_MENU);
         stateManager.clearSelectedShop(chatId);
 
-        /* Устанавливаем меню-кнопку (гамбургер в левом нижнем углу)*/
         bot.setMenuButton(chatId);
 
         List<Shop> shops = shopRepository.findAllByActiveTrue();
@@ -182,7 +221,7 @@ public class MessageHandlerImpl implements MessageHandler {
                 keyboard);
     }
 
-    /* Обработка выбора магазина*/
+    /* Обработка выбора магазина */
     private void selectShop(Long chatId, Long shopId) {
         Shop shop = shopRepository.findById(shopId).orElse(null);
         if (shop == null) {
@@ -193,10 +232,17 @@ public class MessageHandlerImpl implements MessageHandler {
         stateManager.setSelectedShop(chatId, shopId);
         stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
 
-        bot.sendMessage(chatId, "✅ Вы в магазине *" + shop.getName() + "*\n\n" +
-                (shop.getDescription() != null ? shop.getDescription() : ""));
+        /* Если мультимагазин включён — показываем подтверждение */
+        if (multiShopEnabled) {
+            bot.sendMessage(chatId, "✅ Вы в магазине *" + shop.getName() + "*\n\n" +
+                    (shop.getDescription() != null ? shop.getDescription() : ""));
+        } else {
+            /* В режиме одного магазина — просто приветствие */
+            bot.sendMessage(chatId, "👋 Здравствуйте! Добро пожаловать в *" + shop.getName() + "*\n\n" +
+                    (shop.getDescription() != null ? shop.getDescription() : "") +
+                    "\n\nНапишите /catalog или /ai");
+        }
 
-        /* Обновляем меню-кнопку*/
         bot.setMenuButton(chatId);
     }
 
@@ -206,8 +252,15 @@ public class MessageHandlerImpl implements MessageHandler {
     private void showCatalog(Long chatId) {
         Long shopId = stateManager.getSelectedShop(chatId);
         if (shopId == null) {
-            showShopSelection(chatId);
-            return;
+            /* Автовыбор, если магазин один */
+            List<Shop> shops = shopRepository.findAllByActiveTrue();
+            if (shops.size() == 1) {
+                shopId = shops.get(0).getId();
+                stateManager.setSelectedShop(chatId, shopId);
+            } else {
+                showShopSelection(chatId);
+                return;
+            }
         }
 
         stateManager.setCatalogPage(chatId, 0);
@@ -299,8 +352,15 @@ public class MessageHandlerImpl implements MessageHandler {
     private void startAiDialog(Long chatId) {
         Long shopId = stateManager.getSelectedShop(chatId);
         if (shopId == null) {
-            showShopSelection(chatId);
-            return;
+            /* Автовыбор, если магазин один */
+            List<Shop> shops = shopRepository.findAllByActiveTrue();
+            if (shops.size() == 1) {
+                shopId = shops.get(0).getId();
+                stateManager.setSelectedShop(chatId, shopId);
+            } else {
+                showShopSelection(chatId);
+                return;
+            }
         }
 
         stateManager.setState(chatId, UserStateManager.STATE_ASK_AI);

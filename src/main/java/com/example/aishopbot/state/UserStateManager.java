@@ -53,4 +53,9 @@ public class UserStateManager {
         catalogPages.remove(chatId);
     }
 
+    /* Проверить, выбран ли магазин */
+    public boolean hasSelectedShop(Long chatId) {
+        return selectedShop.containsKey(chatId);
+    }
+
 }

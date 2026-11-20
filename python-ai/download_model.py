@@ -8,7 +8,7 @@ os.environ["CURL_CA_BUNDLE"] = ""
 os.environ["REQUESTS_CA_BUNDLE"] = ""
 
 REPO = "Qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q"  # <-- Правильный ID
-OUT_DIR = Path("/models/model")
+OUT_DIR = Path("models/model")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Получаем список файлов через API

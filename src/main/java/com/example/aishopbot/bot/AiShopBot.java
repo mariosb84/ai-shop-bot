@@ -14,6 +14,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
+import java.util.ArrayList;
 
 import java.util.List;
 
@@ -28,6 +29,9 @@ public class AiShopBot extends TelegramLongPollingBot {
 
     @Value("${tg.token}")
     private String botToken;
+
+    @Value("${app.multi-shop-enabled:false}")
+    private boolean multiShopEnabled;
 
     public AiShopBot(MessageHandler messageHandler) {
         this.messageHandler = messageHandler;
@@ -78,18 +82,17 @@ public class AiShopBot extends TelegramLongPollingBot {
         }
     }
 
-    /* Установка меню-кнопки (гамбургер в левом нижнем углу).
-       Telegram сам показывает кнопку меню, когда есть список команд.
-       Достаточно один раз установить список команд для бота. */
     public void setMenuButton(Long chatId) {
         try {
-            List<BotCommand> commands = List.of(
+            List<BotCommand> commands = new ArrayList<>(List.of(
                     new BotCommand("start", "🏠 Главное меню"),
-                    new BotCommand("shop", "🔄 Сменить магазин"),
                     new BotCommand("catalog", "🛍 Каталог"),
                     new BotCommand("ai", "💬 Спросить AI"),
                     new BotCommand("help", "📞 Помощь")
-            );
+            ));
+            if (multiShopEnabled) {
+                commands.add(1, new BotCommand("shop", "🔄 Сменить магазин"));
+            }
             execute(new SetMyCommands(commands, new BotCommandScopeDefault(), null));
             log.info("Меню-кнопка установлена для chatId: {}", chatId);
         } catch (TelegramApiException e) {

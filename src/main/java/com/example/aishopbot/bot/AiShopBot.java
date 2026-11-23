@@ -15,6 +15,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -42,6 +43,9 @@ public class AiShopBot extends TelegramLongPollingBot {
     public String getBotToken() {
         return botToken;
     }
+
+    @Value("${app.multi-shop-enabled:false}")
+    private boolean multiShopEnabled;
 
     @Override
     public void onUpdateReceived(Update update) {
@@ -83,14 +87,27 @@ public class AiShopBot extends TelegramLongPollingBot {
        Достаточно один раз установить список команд для бота. */
     public void setMenuButton(Long chatId) {
         try {
-            List<BotCommand> commands = List.of(
+
+            /*List<BotCommand> commands = List.of(
                     new BotCommand("start", "🏠 Главное меню"),
                     new BotCommand("shop", "🔄 Сменить магазин"),
                     new BotCommand("catalog", "🛍 Каталог"),
                     new BotCommand("ai", "💬 Спросить AI"),
                     new BotCommand("help", "📞 Помощь")
             );
+            execute(new SetMyCommands(commands, new BotCommandScopeDefault(), null));*/
+
+            List<BotCommand> commands = new ArrayList<>(List.of(
+                    new BotCommand("start", "🏠 Главное меню"),
+                    new BotCommand("catalog", "🛍 Каталог"),
+                    new BotCommand("ai", "💬 Спросить AI"),
+                    new BotCommand("help", "📞 Помощь")
+            ));
+            if (multiShopEnabled) {
+                commands.add(1, new BotCommand("shop", "🔄 Сменить магазин"));
+            }
             execute(new SetMyCommands(commands, new BotCommandScopeDefault(), null));
+
             log.info("Меню-кнопка установлена для chatId: {}", chatId);
         } catch (TelegramApiException e) {
             log.error("Ошибка установки меню: {}", e.getMessage());

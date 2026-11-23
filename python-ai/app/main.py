@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from .llm import chat_with_deepseek
-from .qdrant_client import (
+from .vector_store import (
     ensure_collection,
     index_products,
     search_products,

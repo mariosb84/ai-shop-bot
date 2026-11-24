@@ -8,4 +8,6 @@ public interface MessageHandler {
 
     void handleCallback(CallbackQuery callbackQuery);
 
+    void handleDocument(Message message);
+
 }

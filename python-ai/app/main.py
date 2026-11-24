@@ -1,3 +1,7 @@
+from fastapi import UploadFile, File, Form
+import io
+import pandas as pd
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -70,6 +74,41 @@ async def clear_shop(request: ClearShopRequest):
     try:
         clear_shop_products(request.shop_id)
         return {"cleared": True, "shop_id": request.shop_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/load-catalog")
+async def load_catalog(shop_id: int = Form(...), file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        df = pd.read_excel(io.BytesIO(content))
+
+        required = {"name", "price"}
+        missing = required - set(df.columns)
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Нет колонок: {missing}")
+
+        for col in ("category", "description", "image_url"):
+            if col not in df.columns:
+                df[col] = ""
+
+        df = df.dropna(subset=["name", "price"])
+
+        products = []
+        for _, row in df.iterrows():
+            products.append({
+                "name": str(row["name"]).strip(),
+                "category": str(row["category"]).strip() if pd.notna(row["category"]) else "",
+                "description": str(row["description"]).strip() if pd.notna(row["description"]) else "",
+                "price": float(row["price"]),
+                "image_url": str(row["image_url"]).strip() if pd.notna(row["image_url"]) else "",
+            })
+
+        clear_shop_products(shop_id)
+        return {"shop_id": shop_id, "products": products}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -97,4 +97,32 @@ public class AiServiceClient {
             log.error("Ошибка индексации товаров: {}", e.getMessage(), e);
         }
     }
+
+    public JsonNode uploadCatalog(Long shopId, byte[] fileBytes, String filename) {
+        try {
+            String boundary = "----Boundary" + System.currentTimeMillis();
+            var body = new java.io.ByteArrayOutputStream();
+
+            body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"shop_id\"\r\n\r\n" + shopId + "\r\n").getBytes(StandardCharsets.UTF_8));
+            body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+            body.write(fileBytes);
+            body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(aiServiceUrl + "/load-catalog"))
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                    .timeout(Duration.ofSeconds(300))
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            log.info("Загрузка каталога: {} — {}", response.statusCode(), response.body());
+            if (response.statusCode() != 200) return null;
+            return objectMapper.readTree(response.body());
+        } catch (Exception e) {
+            log.error("Ошибка загрузки каталога: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
 }

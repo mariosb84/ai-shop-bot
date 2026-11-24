@@ -13,6 +13,10 @@ public class UserStateManager {
     public static final String STATE_CATALOG = "CATALOG";
     public static final String STATE_ASK_AI = "ASK_AI";
 
+    public static final String STATE_ADMIN_MENU = "ADMIN_MENU";
+    public static final String STATE_ADMIN_UPLOAD_CATALOG = "ADMIN_UPLOAD_CATALOG";
+    public static final String STATE_ADMIN_SET_PHONE = "ADMIN_SET_PHONE";
+
     private final Map<Long, Integer> catalogPages = new ConcurrentHashMap<>();
     private final Map<Long, String> userStates = new ConcurrentHashMap<>();
     private final Map<Long, Long> selectedShop = new ConcurrentHashMap<>();

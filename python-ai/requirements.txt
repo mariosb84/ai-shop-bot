@@ -7,3 +7,6 @@ qdrant-client
 fastembed
 rank-bm25
 pymorphy3
+pandas
+openpyxl
+python-multipart

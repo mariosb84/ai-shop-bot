@@ -14,6 +14,8 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import com.example.aishopbot.domain.Product;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +33,9 @@ public class MessageHandlerImpl implements MessageHandler {
 
     @org.springframework.beans.factory.annotation.Value("${app.multi-shop-enabled:false}")
     private boolean multiShopEnabled;
+
+    @org.springframework.beans.factory.annotation.Value("${app.admin-chat-ids:}")
+    private String adminChatIdsRaw;
 
     public MessageHandlerImpl(@Lazy AiShopBot bot,
                               UserStateManager stateManager,
@@ -64,6 +69,11 @@ public class MessageHandlerImpl implements MessageHandler {
             return;
         }
 
+        if (UserStateManager.STATE_ADMIN_SET_PHONE.equals(state) && !isCommand) {
+            saveOperatorPhone(chatId, text);
+            return;
+        }
+
         /* Обработка команд*/
         switch (text) {
             case "/start" -> {
@@ -92,6 +102,9 @@ public class MessageHandlerImpl implements MessageHandler {
             case "/ai" -> startAiDialog(chatId);
             case "/help" -> bot.sendMessage(chatId,
                     "📞 Если нужна помощь — напишите: support@example.com");
+
+            case "/admin" -> showAdminMenu(chatId);
+
             default -> {
                 if (UserStateManager.STATE_ASK_AI.equals(state)) {
                     stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
@@ -159,6 +172,11 @@ public class MessageHandlerImpl implements MessageHandler {
         if ("ai_finish".equals(data)) {
             stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
             bot.sendMessage(chatId, "✅ Диалог завершён. Выберите команду из меню 👇");
+            return;
+        }
+
+        if (data.startsWith("admin_")) {
+            handleAdminCallback(chatId, data);
             return;
         }
 
@@ -417,6 +435,129 @@ public class MessageHandlerImpl implements MessageHandler {
         keyboard.setKeyboard(rows);
 
         bot.sendMessageWithKeyboard(chatId, response.getReply(), keyboard);
+    }
+
+    private boolean isAdmin(Long chatId) {
+        /* 1) по списку из конфига*/
+        if (adminChatIdsRaw != null && !adminChatIdsRaw.isBlank()) {
+            for (String id : adminChatIdsRaw.split(",")) {
+                if (id.trim().equals(String.valueOf(chatId))) return true;
+            }
+        }
+        /* 2) по adminChatId магазина*/
+        Long shopId = stateManager.getSelectedShop(chatId);
+        if (shopId != null) {
+            Shop shop = shopRepository.findById(shopId).orElse(null);
+            if (shop != null && chatId.equals(shop.getAdminChatId())) return true;
+        }
+        return false;
+    }
+
+    private void showAdminMenu(Long chatId) {
+        if (!isAdmin(chatId)) {
+            bot.sendMessage(chatId, "⛔ Нет доступа");
+            return;
+        }
+        stateManager.setState(chatId, UserStateManager.STATE_ADMIN_MENU);
+
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        rows.add(List.of(createButton("📤 Загрузить каталог", "admin_upload")));
+        rows.add(List.of(createButton("📞 Телефон оператора", "admin_phone")));
+        keyboard.setKeyboard(rows);
+
+        bot.sendMessageWithKeyboard(chatId, "🛠 *Админ-панель*", keyboard);
+    }
+
+    private void handleAdminCallback(Long chatId, String data) {
+        if (!isAdmin(chatId)) {
+            bot.sendMessage(chatId, "⛔ Нет доступа");
+            return;
+        }
+        switch (data) {
+            case "admin_upload" -> {
+                stateManager.setState(chatId, UserStateManager.STATE_ADMIN_UPLOAD_CATALOG);
+                bot.sendMessage(chatId, "📤 Отправьте Excel-файл (.xlsx)");
+            }
+            case "admin_phone" -> {
+                stateManager.setState(chatId, UserStateManager.STATE_ADMIN_SET_PHONE);
+                bot.sendMessage(chatId, "📞 Отправьте номер телефона оператора");
+            }
+            case "admin_back" -> showAdminMenu(chatId);
+        }
+    }
+
+    private void saveOperatorPhone(Long chatId, String phone) {
+        Long shopId = stateManager.getSelectedShop(chatId);
+        Shop shop = shopRepository.findById(shopId).orElse(null);
+        if (shop == null) return;
+        shop.setOperatorPhone(phone.trim());
+        shopRepository.save(shop);
+        stateManager.setState(chatId, UserStateManager.STATE_ADMIN_MENU);
+        bot.sendMessage(chatId, "✅ Телефон сохранён: " + phone.trim());
+    }
+
+    @Override
+    public void handleDocument(Message message) {
+        Long chatId = message.getChatId();
+        String state = stateManager.getState(chatId);
+
+        if (!UserStateManager.STATE_ADMIN_UPLOAD_CATALOG.equals(state) || !isAdmin(chatId)) {
+            bot.sendMessage(chatId, "⛔ Загрузка каталога доступна только админу в режиме загрузки");
+            return;
+        }
+
+        try {
+            var doc = message.getDocument();
+            String filename = doc.getFileName() != null ? doc.getFileName() : "catalog.xlsx";
+            if (!filename.toLowerCase().endsWith(".xlsx")) {
+                bot.sendMessage(chatId, "❌ Нужен файл .xlsx");
+                return;
+            }
+
+            byte[] bytes;
+            try {
+                var tgFile = bot.execute(new org.telegram.telegrambots.meta.api.methods.GetFile(doc.getFileId()));
+                String fileUrl = "https://api.telegram.org/file/bot" + bot.getBotToken() + "/" + tgFile.getFilePath();
+                try (var in = new java.net.URL(fileUrl).openStream()) {
+                    bytes = in.readAllBytes();
+                }
+            } catch (Exception e) {
+                log.error("Ошибка скачивания файла: {}", e.getMessage(), e);
+                bot.sendMessage(chatId, "❌ Не удалось скачать файл");
+                return;
+            }
+
+            Long shopId = stateManager.getSelectedShop(chatId);
+            JsonNode resp = aiServiceClient.uploadCatalog(shopId, bytes, filename);
+            if (resp == null) {
+                bot.sendMessage(chatId, "❌ Ошибка загрузки каталога");
+                return;
+            }
+
+            productRepository.deleteAll(productRepository.findAllByShopIdAndActiveTrue(shopId));
+
+            List<Product> saved = new ArrayList<>();
+            for (JsonNode p : resp.get("products")) {
+                Product prod = new Product();
+                prod.setName(p.get("name").asText());
+                prod.setCategory(p.has("category") ? p.get("category").asText() : "");
+                prod.setDescription(p.has("description") ? p.get("description").asText() : "");
+                prod.setPrice(java.math.BigDecimal.valueOf(p.get("price").asDouble()));
+                prod.setImageUrl(p.has("image_url") ? p.get("image_url").asText() : "");
+                prod.setShopId(shopId);
+                prod.setActive(true);
+                saved.add(prod);
+            }
+            saved = productRepository.saveAll(saved);
+            aiServiceClient.indexProducts(saved);
+
+            stateManager.setState(chatId, UserStateManager.STATE_ADMIN_MENU);
+            bot.sendMessage(chatId, "✅ Загружено " + saved.size() + " товаров");
+        } catch (Exception e) {
+            log.error("Ошибка загрузки каталога: {}", e.getMessage(), e);
+            bot.sendMessage(chatId, "❌ Ошибка: " + e.getMessage());
+        }
     }
 
     /* Вспомогательный метод создания inline-кнопки*/

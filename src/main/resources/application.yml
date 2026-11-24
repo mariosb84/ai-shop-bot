@@ -34,3 +34,4 @@ ai:
 
 app:
   multi-shop-enabled: false
+  admin-chat-ids: ${ADMIN_CHAT_IDS:409923279}

@@ -14,6 +14,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
+
 import java.util.ArrayList;
 
 import java.util.List;
@@ -53,6 +54,9 @@ public class AiShopBot extends TelegramLongPollingBot {
             messageHandler.handleTextMessage(update.getMessage());
         } else if (update.hasCallbackQuery()) {
             messageHandler.handleCallback(update.getCallbackQuery());
+        }
+        if (update.hasMessage() && update.getMessage().hasDocument()) {
+            messageHandler.handleDocument(update.getMessage());
         }
     }
 

@@ -17,9 +17,15 @@ public class UserStateManager {
     public static final String STATE_ADMIN_UPLOAD_CATALOG = "ADMIN_UPLOAD_CATALOG";
     public static final String STATE_ADMIN_SET_PHONE = "ADMIN_SET_PHONE";
 
+    public static final String STATE_ORDER_NAME = "ORDER_NAME";
+    public static final String STATE_ORDER_PHONE = "ORDER_PHONE";
+    public static final String STATE_ORDER_COMMENT = "ORDER_COMMENT";
+
     private final Map<Long, Integer> catalogPages = new ConcurrentHashMap<>();
     private final Map<Long, String> userStates = new ConcurrentHashMap<>();
     private final Map<Long, Long> selectedShop = new ConcurrentHashMap<>();
+
+    private final Map<Long, Long> pendingProductId = new ConcurrentHashMap<>();
 
     public String getState(Long chatId) {
         return userStates.getOrDefault(chatId, STATE_SHOP_MENU);
@@ -60,6 +66,18 @@ public class UserStateManager {
     /* Проверить, выбран ли магазин */
     public boolean hasSelectedShop(Long chatId) {
         return selectedShop.containsKey(chatId);
+    }
+
+    public void setPendingProductId(Long chatId, Long productId) {
+        pendingProductId.put(chatId, productId);
+    }
+
+    public Long getPendingProductId(Long chatId) {
+        return pendingProductId.get(chatId);
+    }
+
+    public void clearPendingProductId(Long chatId) {
+        pendingProductId.remove(chatId);
     }
 
 }

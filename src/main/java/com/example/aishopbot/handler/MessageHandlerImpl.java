@@ -16,6 +16,8 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import com.example.aishopbot.domain.Product;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.example.aishopbot.domain.Order;
+import com.example.aishopbot.repository.OrderRepository;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +33,11 @@ public class MessageHandlerImpl implements MessageHandler {
     private final AiServiceClient aiServiceClient;
     private static final int CARDS_PER_PAGE = 3;
 
+    private final java.util.Map<Long, String> pendingName = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<Long, String> pendingPhone = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private final OrderRepository orderRepository;
+
     @org.springframework.beans.factory.annotation.Value("${app.multi-shop-enabled:false}")
     private boolean multiShopEnabled;
 
@@ -41,11 +48,13 @@ public class MessageHandlerImpl implements MessageHandler {
                               UserStateManager stateManager,
                               ProductRepository productRepository,
                               ShopRepository shopRepository,
+                              OrderRepository orderRepository,
                               AiServiceClient aiServiceClient) {
         this.bot = bot;
         this.stateManager = stateManager;
         this.productRepository = productRepository;
         this.shopRepository = shopRepository;
+        this.orderRepository = orderRepository;
         this.aiServiceClient = aiServiceClient;
     }
 
@@ -71,6 +80,19 @@ public class MessageHandlerImpl implements MessageHandler {
 
         if (UserStateManager.STATE_ADMIN_SET_PHONE.equals(state) && !isCommand) {
             saveOperatorPhone(chatId, text);
+            return;
+        }
+
+        if (UserStateManager.STATE_ORDER_NAME.equals(state) && !isCommand) {
+            handleOrderName(chatId, text);
+            return;
+        }
+        if (UserStateManager.STATE_ORDER_PHONE.equals(state) && !isCommand) {
+            handleOrderPhone(chatId, text);
+            return;
+        }
+        if (UserStateManager.STATE_ORDER_COMMENT.equals(state) && !isCommand) {
+            handleOrderComment(chatId, text);
             return;
         }
 
@@ -142,10 +164,10 @@ public class MessageHandlerImpl implements MessageHandler {
             return;
         }
 
-       /* Покупка товара (заглушка — реализуем позже)*/
+       /* Покупка товара */
         if (data.startsWith("buy_")) {
             Long productId = Long.parseLong(data.substring(4));
-            bot.sendMessage(chatId, "🛒 Оформление заказа скоро появится!");
+            startOrder(chatId, productId);
             return;
         }
 
@@ -392,7 +414,7 @@ public class MessageHandlerImpl implements MessageHandler {
 
         bot.sendMessageWithKeyboard(chatId,
                 "💬 *Задайте вопрос AI-консультанту*\n\n" +
-                        "Например: «Что посоветуешь из одежды?»",
+                        "Например: «Посоветуй парфюм на вечер» или «Есть что-то свежее?»",
                 keyboard);
     }
 
@@ -464,6 +486,7 @@ public class MessageHandlerImpl implements MessageHandler {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         rows.add(List.of(createButton("📤 Загрузить каталог", "admin_upload")));
         rows.add(List.of(createButton("📞 Телефон оператора", "admin_phone")));
+        rows.add(List.of(createButton("❌ Отмена", "admin_cancel")));
         keyboard.setKeyboard(rows);
 
         bot.sendMessageWithKeyboard(chatId, "🛠 *Админ-панель*", keyboard);
@@ -482,6 +505,10 @@ public class MessageHandlerImpl implements MessageHandler {
             case "admin_phone" -> {
                 stateManager.setState(chatId, UserStateManager.STATE_ADMIN_SET_PHONE);
                 bot.sendMessage(chatId, "📞 Отправьте номер телефона оператора");
+            }
+            case "admin_cancel" -> {
+                stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
+                bot.sendMessage(chatId, "Выход из админ-панели");
             }
             case "admin_back" -> showAdminMenu(chatId);
         }
@@ -566,6 +593,114 @@ public class MessageHandlerImpl implements MessageHandler {
         button.setText(text);
         button.setCallbackData(callbackData);
         return button;
+    }
+
+    /* ==================== ОФОРМЛЕНИЕ ЗАКАЗА ==================== */
+
+    private void startOrder(Long chatId, Long productId) {
+        var product = productRepository.findById(productId).orElse(null);
+        if (product == null) {
+            bot.sendMessage(chatId, "❌ Товар не найден");
+            return;
+        }
+        stateManager.setPendingProductId(chatId, productId);
+        stateManager.setState(chatId, UserStateManager.STATE_ORDER_NAME);
+        bot.sendMessage(chatId, "📝 Оформление заказа\n\nКак вас зовут?");
+    }
+
+    private void handleOrderName(Long chatId, String name) {
+        if (name.trim().isEmpty()) {
+            bot.sendMessage(chatId, "Введите имя");
+            return;
+        }
+        stateManager.setState(chatId, UserStateManager.STATE_ORDER_PHONE);
+        bot.sendMessage(chatId, "📞 Ваш номер телефона?");
+        /* имя сохраним во временное поле */
+        pendingName.put(chatId, name.trim());
+    }
+
+    private void handleOrderPhone(Long chatId, String phone) {
+        stateManager.setState(chatId, UserStateManager.STATE_ORDER_COMMENT);
+        bot.sendMessage(chatId, "💬 Комментарий к заказу (или напишите «-», чтобы пропустить)");
+        pendingPhone.put(chatId, phone.trim());
+    }
+
+    private void handleOrderComment(Long chatId, String comment) {
+        Long productId = stateManager.getPendingProductId(chatId);
+        Long shopId = stateManager.getSelectedShop(chatId);
+        if (productId == null || shopId == null) {
+            bot.sendMessage(chatId, "❌ Ошибка: товар не найден. Начните заново.");
+            return;
+        }
+
+        var product = productRepository.findById(productId).orElse(null);
+        if (product == null) {
+            bot.sendMessage(chatId, "❌ Товар не найден");
+            return;
+        }
+
+        Shop shop = shopRepository.findById(shopId).orElse(null);
+
+        Order order = new Order();
+        order.setShopId(shopId);
+        order.setProductId(productId);
+        order.setProductName(product.getName());
+        order.setProductPrice(product.getPrice());
+        order.setCustomerName(pendingName.getOrDefault(chatId, "—"));
+        order.setCustomerPhone(pendingPhone.getOrDefault(chatId, "—"));
+        order.setCustomerComment("-".equals(comment.trim()) ? "" : comment.trim());
+        order.setCustomerChatId(chatId);
+        order.setStatus("new");
+        order = orderRepository.save(order);
+
+        /* Уведомление админу */
+
+            StringBuilder msg = new StringBuilder();
+            msg.append("🛍 *Новый заказ #").append(order.getId()).append("*\n\n");
+            msg.append("Товар: ").append(product.getName()).append("\n");
+            msg.append("Цена: ").append(product.getPrice()).append(" ₽\n");
+            msg.append("Клиент: ").append(order.getCustomerName()).append("\n");
+            msg.append("Телефон: ").append(order.getCustomerPhone()).append("\n");
+            if (!order.getCustomerComment().isEmpty()) {
+                msg.append("Комментарий: ").append(order.getCustomerComment()).append("\n");
+            }
+            msg.append("TG ID: ").append(chatId).append("\n");
+            if (shop != null && shop.getOperatorPhone() != null) {
+                msg.append("\nОператор: ").append(shop.getOperatorPhone());
+            }
+
+            /* Кому слать: adminChatId магазина, иначе — список из конфига */
+
+            java.util.Set<Long> recipients = new java.util.HashSet<>();
+            if (shop != null && shop.getAdminChatId() != null) {
+                recipients.add(shop.getAdminChatId());
+            }
+            if (adminChatIdsRaw != null && !adminChatIdsRaw.isBlank()) {
+                for (String id : adminChatIdsRaw.split(",")) {
+                    try { recipients.add(Long.parseLong(id.trim())); } catch (NumberFormatException ignored) {}
+                }
+            }
+            for (Long rid : recipients) {
+                bot.sendMessage(rid, msg.toString());
+            }
+
+        /* Подтверждение клиенту */
+        String confirm = "✅ Заказ #" + order.getId() + " оформлен!\n\n" +
+                "Товар: " + product.getName() + "\n" +
+                "Сумма: " + product.getPrice() + " ₽\n";
+        if (shop != null && shop.getOperatorPhone() != null) {
+            confirm += "Оператор свяжется с вами с этого номера телефона : " + shop.getOperatorPhone()  + "\n" +
+                    "Либо можете сами позвонить, если вам удобно.";
+        } else {
+            confirm += "Оператор свяжется с вами в ближайшее время.";
+        }
+        bot.sendMessage(chatId, confirm);
+
+        /* Очистка */
+        stateManager.clearPendingProductId(chatId);
+        pendingName.remove(chatId);
+        pendingPhone.remove(chatId);
+        stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
     }
 
 }

@@ -197,7 +197,7 @@ public class MessageHandlerImpl implements MessageHandler {
             return;
         }
 
-        if (data.startsWith("admin_")) {
+        if (data.startsWith("admin_") || data.startsWith("order_status_")) {
             handleAdminCallback(chatId, data);
             return;
         }
@@ -486,6 +486,7 @@ public class MessageHandlerImpl implements MessageHandler {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         rows.add(List.of(createButton("📤 Загрузить каталог", "admin_upload")));
         rows.add(List.of(createButton("📞 Телефон оператора", "admin_phone")));
+        rows.add(List.of(createButton("📋 Заказы", "admin_orders")));
         rows.add(List.of(createButton("❌ Отмена", "admin_cancel")));
         keyboard.setKeyboard(rows);
 
@@ -493,10 +494,22 @@ public class MessageHandlerImpl implements MessageHandler {
     }
 
     private void handleAdminCallback(Long chatId, String data) {
+
+        log.info("ADMIN CALLBACK data={}", data);
+
         if (!isAdmin(chatId)) {
             bot.sendMessage(chatId, "⛔ Нет доступа");
             return;
         }
+
+        if (data.startsWith("order_status_")) {
+            String[] parts = data.split("_");
+            Long orderId = Long.parseLong(parts[2]);
+            String status = parts[3];
+            updateOrderStatus(chatId, orderId, status);
+            return;
+        }
+
         switch (data) {
             case "admin_upload" -> {
                 stateManager.setState(chatId, UserStateManager.STATE_ADMIN_UPLOAD_CATALOG);
@@ -510,6 +523,7 @@ public class MessageHandlerImpl implements MessageHandler {
                 stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
                 bot.sendMessage(chatId, "Выход из админ-панели");
             }
+            case "admin_orders" -> showOrders(chatId);
             case "admin_back" -> showAdminMenu(chatId);
         }
     }
@@ -562,7 +576,14 @@ public class MessageHandlerImpl implements MessageHandler {
                 return;
             }
 
-            productRepository.deleteAll(productRepository.findAllByShopIdAndActiveTrue(shopId));
+            /*productRepository.deleteAll(productRepository.findAllByShopIdAndActiveTrue(shopId));*/
+
+
+            var oldProducts = productRepository.findAllByShopIdAndActiveTrue(shopId);
+            for (var p : oldProducts) {
+                p.setActive(false);
+            }
+            productRepository.saveAll(oldProducts);
 
             List<Product> saved = new ArrayList<>();
             for (JsonNode p : resp.get("products")) {
@@ -701,6 +722,85 @@ public class MessageHandlerImpl implements MessageHandler {
         pendingName.remove(chatId);
         pendingPhone.remove(chatId);
         stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
+    }
+
+    /* ==================== СПИСОК ЗАКАЗОВ ==================== */
+
+    private void showOrders(Long chatId) {
+        Long shopId = stateManager.getSelectedShop(chatId);
+        List<Order> orders = (shopId != null)
+                ? orderRepository.findAllByShopIdOrderByCreatedAtDesc(shopId)
+                : orderRepository.findAllByOrderByCreatedAtDesc();
+
+        if (orders.isEmpty()) {
+            bot.sendMessage(chatId, "📋 Заказов пока нет");
+            return;
+        }
+
+        /* Показываем последние 10 */
+        int limit = Math.min(orders.size(), 10);
+        bot.sendMessage(chatId, "📋 *Последние заказы* (" + orders.size() + " всего)");
+
+        for (int i = 0; i < limit; i++) {
+            Order o = orders.get(i);
+            StringBuilder sb = new StringBuilder();
+            sb.append("*Заказ #").append(o.getId()).append("* [").append(statusRu(o.getStatus())).append("]\n");
+            sb.append("Товар: ").append(o.getProductName()).append("\n");
+            sb.append("Сумма: ").append(o.getProductPrice()).append(" ₽\n");
+            sb.append("Клиент: ").append(o.getCustomerName()).append(", ").append(o.getCustomerPhone()).append("\n");
+            if (o.getCustomerComment() != null && !o.getCustomerComment().isEmpty()) {
+                sb.append("Комментарий: ").append(o.getCustomerComment()).append("\n");
+            }
+            sb.append("TG: ").append(o.getCustomerChatId()).append("\n");
+            sb.append("Дата: ").append(o.getCreatedAt()).append("\n");
+
+            /* Кнопки смены статуса */
+            InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+            List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+            List<InlineKeyboardButton> row = new ArrayList<>();
+            if (!"done".equals(o.getStatus())) {
+                row.add(createButton("✅ Выполнен", "order_status_" + o.getId() + "_done"));
+            }
+            if (!"cancelled".equals(o.getStatus())) {
+                row.add(createButton("❌ Отменён", "order_status_" + o.getId() + "_cancelled"));
+            }
+            if (!row.isEmpty()) {
+                rows.add(row);
+                keyboard.setKeyboard(rows);
+                bot.sendMessageWithKeyboard(chatId, sb.toString(), keyboard);
+            } else {
+                bot.sendMessage(chatId, sb.toString());
+            }
+        }
+
+        bot.sendMessageWithKeyboard(chatId, "Вернуться в админку:",
+                keyboardWith(List.of(createButton("⬅️ Назад", "admin_back"))));
+    }
+
+    private void updateOrderStatus(Long chatId, Long orderId, String status) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            bot.sendMessage(chatId, "❌ Заказ не найден");
+            return;
+        }
+        order.setStatus(status);
+        orderRepository.save(order);
+        bot.sendMessage(chatId, "✅ Заказ #" + orderId + " — " + statusRu(status));
+    }
+
+    private String statusRu(String status) {
+        return switch (status) {
+            case "new" -> "новый";
+            case "done" -> "выполнен";
+            case "cancelled" -> "отменён";
+            default -> status;
+        };
+    }
+
+    private InlineKeyboardMarkup keyboardWith(List<InlineKeyboardButton> buttons) {
+        InlineKeyboardMarkup kb = new InlineKeyboardMarkup();
+        kb.setKeyboard(List.of(buttons));
+        return kb;
     }
 
 }

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="1-create-shops" author="sergey">
+        <createTable tableName="shops">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="description" type="VARCHAR(500)"/>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="operator_phone" type="VARCHAR(20)"/>
+            <column name="admin_chat_id" type="BIGINT"/>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="NOW()"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="2-create-products" author="sergey">
+        <createTable tableName="products">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="VARCHAR(1000)"/>
+            <column name="price" type="NUMERIC(10,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="image_url" type="VARCHAR(255)"/>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="shop_id" type="BIGINT"/>
+            <column name="category" type="VARCHAR(100)"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="3-create-orders" author="sergey">
+        <createTable tableName="orders">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="shop_id" type="BIGINT">
+                <constraints foreignKeyName="fk_orders_shop" references="shops(id)"/>
+            </column>
+            <column name="product_id" type="BIGINT">
+                <constraints foreignKeyName="fk_orders_product" references="products(id)"/>
+            </column>
+            <column name="product_name" type="VARCHAR(255)"/>
+            <column name="product_price" type="NUMERIC(10,2)"/>
+            <column name="customer_name" type="VARCHAR(100)"/>
+            <column name="customer_phone" type="VARCHAR(20)"/>
+            <column name="customer_comment" type="TEXT"/>
+            <column name="customer_chat_id" type="BIGINT"/>
+            <column name="customer_username" type="VARCHAR(100)"/>
+            <column name="status" type="VARCHAR(20)" defaultValue="new"/>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="NOW()"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="4-create-user-states" author="sergey">
+        <createTable tableName="user_states">
+            <column name="chat_id" type="BIGINT">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="state" type="VARCHAR(50)"/>
+            <column name="selected_shop_id" type="BIGINT"/>
+            <column name="catalog_page" type="INT" defaultValueNumeric="0"/>
+            <column name="pending_product_id" type="BIGINT"/>
+            <column name="pending_name" type="VARCHAR(100)"/>
+            <column name="pending_phone" type="VARCHAR(20)"/>
+            <column name="updated_at" type="TIMESTAMP" defaultValueComputed="NOW()"/>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

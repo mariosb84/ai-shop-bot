@@ -10,11 +10,15 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      #ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.xml
 
 server:
   port: 9901
@@ -35,3 +39,4 @@ ai:
 app:
   multi-shop-enabled: false
   admin-chat-ids: ${ADMIN_CHAT_IDS:409923279}
+  seed-test-data: ${SEED_TEST_DATA:true}

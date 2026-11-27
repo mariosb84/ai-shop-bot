@@ -33,9 +33,6 @@ public class MessageHandlerImpl implements MessageHandler {
     private final AiServiceClient aiServiceClient;
     private static final int CARDS_PER_PAGE = 3;
 
-    private final java.util.Map<Long, String> pendingName = new java.util.concurrent.ConcurrentHashMap<>();
-    private final java.util.Map<Long, String> pendingPhone = new java.util.concurrent.ConcurrentHashMap<>();
-
     private final OrderRepository orderRepository;
 
     @org.springframework.beans.factory.annotation.Value("${app.multi-shop-enabled:false}")
@@ -486,7 +483,8 @@ public class MessageHandlerImpl implements MessageHandler {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         rows.add(List.of(createButton("📤 Загрузить каталог", "admin_upload")));
         rows.add(List.of(createButton("📞 Телефон оператора", "admin_phone")));
-        rows.add(List.of(createButton("📋 Заказы", "admin_orders")));
+        rows.add(List.of(createButton("📋 Текущие заказы", "admin_orders_new")));
+        rows.add(List.of(createButton("🗄 Архив заказов", "admin_orders_archive")));
         rows.add(List.of(createButton("❌ Отмена", "admin_cancel")));
         keyboard.setKeyboard(rows);
 
@@ -523,7 +521,8 @@ public class MessageHandlerImpl implements MessageHandler {
                 stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
                 bot.sendMessage(chatId, "Выход из админ-панели");
             }
-            case "admin_orders" -> showOrders(chatId);
+            case "admin_orders_new" -> showOrders(chatId, false);
+            case "admin_orders_archive" -> showOrders(chatId, true);
             case "admin_back" -> showAdminMenu(chatId);
         }
     }
@@ -575,9 +574,6 @@ public class MessageHandlerImpl implements MessageHandler {
                 bot.sendMessage(chatId, "❌ Ошибка загрузки каталога");
                 return;
             }
-
-            /*productRepository.deleteAll(productRepository.findAllByShopIdAndActiveTrue(shopId));*/
-
 
             var oldProducts = productRepository.findAllByShopIdAndActiveTrue(shopId);
             for (var p : oldProducts) {
@@ -637,13 +633,13 @@ public class MessageHandlerImpl implements MessageHandler {
         stateManager.setState(chatId, UserStateManager.STATE_ORDER_PHONE);
         bot.sendMessage(chatId, "📞 Ваш номер телефона?");
         /* имя сохраним во временное поле */
-        pendingName.put(chatId, name.trim());
+        stateManager.setPendingName(chatId, name.trim());
     }
 
     private void handleOrderPhone(Long chatId, String phone) {
         stateManager.setState(chatId, UserStateManager.STATE_ORDER_COMMENT);
         bot.sendMessage(chatId, "💬 Комментарий к заказу (или напишите «-», чтобы пропустить)");
-        pendingPhone.put(chatId, phone.trim());
+        stateManager.setPendingPhone(chatId, phone.trim());
     }
 
     private void handleOrderComment(Long chatId, String comment) {
@@ -667,8 +663,10 @@ public class MessageHandlerImpl implements MessageHandler {
         order.setProductId(productId);
         order.setProductName(product.getName());
         order.setProductPrice(product.getPrice());
-        order.setCustomerName(pendingName.getOrDefault(chatId, "—"));
-        order.setCustomerPhone(pendingPhone.getOrDefault(chatId, "—"));
+        String cName = stateManager.getPendingName(chatId);
+        String cPhone = stateManager.getPendingPhone(chatId);
+        order.setCustomerName(cName != null ? cName : "—");
+        order.setCustomerPhone(cPhone != null ? cPhone : "—");
         order.setCustomerComment("-".equals(comment.trim()) ? "" : comment.trim());
         order.setCustomerChatId(chatId);
         order.setStatus("new");
@@ -718,28 +716,32 @@ public class MessageHandlerImpl implements MessageHandler {
         bot.sendMessage(chatId, confirm);
 
         /* Очистка */
-        stateManager.clearPendingProductId(chatId);
-        pendingName.remove(chatId);
-        pendingPhone.remove(chatId);
+        stateManager.clearPendingOrderData(chatId);
         stateManager.setState(chatId, UserStateManager.STATE_MAIN_MENU);
     }
 
     /* ==================== СПИСОК ЗАКАЗОВ ==================== */
 
-    private void showOrders(Long chatId) {
+    private void showOrders(Long chatId, boolean archive) {
         Long shopId = stateManager.getSelectedShop(chatId);
-        List<Order> orders = (shopId != null)
+        List<Order> all = (shopId != null)
                 ? orderRepository.findAllByShopIdOrderByCreatedAtDesc(shopId)
                 : orderRepository.findAllByOrderByCreatedAtDesc();
 
+        List<Order> orders = all.stream()
+                .filter(o -> archive
+                        ? ("done".equals(o.getStatus()) || "cancelled".equals(o.getStatus()))
+                        : "new".equals(o.getStatus()))
+                .toList();
+
         if (orders.isEmpty()) {
-            bot.sendMessage(chatId, "📋 Заказов пока нет");
+            bot.sendMessage(chatId, archive ? "🗄 Архив пуст" : "📋 Текущих заказов нет");
             return;
         }
 
-        /* Показываем последние 10 */
         int limit = Math.min(orders.size(), 10);
-        bot.sendMessage(chatId, "📋 *Последние заказы* (" + orders.size() + " всего)");
+        bot.sendMessage(chatId, (archive ? "🗄 *Архив заказов*" : "📋 *Текущие заказы*")
+                + " (" + orders.size() + " всего)");
 
         for (int i = 0; i < limit; i++) {
             Order o = orders.get(i);
@@ -754,17 +756,12 @@ public class MessageHandlerImpl implements MessageHandler {
             sb.append("TG: ").append(o.getCustomerChatId()).append("\n");
             sb.append("Дата: ").append(o.getCreatedAt()).append("\n");
 
-            /* Кнопки смены статуса */
-            InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-            List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-            List<InlineKeyboardButton> row = new ArrayList<>();
-            if (!"done".equals(o.getStatus())) {
+            if (!archive) {
+                InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+                List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+                List<InlineKeyboardButton> row = new ArrayList<>();
                 row.add(createButton("✅ Выполнен", "order_status_" + o.getId() + "_done"));
-            }
-            if (!"cancelled".equals(o.getStatus())) {
                 row.add(createButton("❌ Отменён", "order_status_" + o.getId() + "_cancelled"));
-            }
-            if (!row.isEmpty()) {
                 rows.add(row);
                 keyboard.setKeyboard(rows);
                 bot.sendMessageWithKeyboard(chatId, sb.toString(), keyboard);

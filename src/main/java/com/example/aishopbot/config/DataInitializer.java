@@ -22,6 +22,9 @@ public class DataInitializer implements CommandLineRunner {
     private final ShopRepository shopRepository;
     private final AiServiceClient aiServiceClient;
 
+    @org.springframework.beans.factory.annotation.Value("${app.seed-test-data:true}")
+    private boolean seedTestData;
+
     @Override
     public void run(String... args) {
         /* Создаём магазины, если их нет */
@@ -57,7 +60,7 @@ public class DataInitializer implements CommandLineRunner {
         }
 
         /* Загружаем тестовые товары, если их нет */
-        if (productRepository.count() == 0) {
+        if (seedTestData && productRepository.count() == 0) {
             productRepository.saveAll(List.of(
                     createProduct("Bleu de Chanel EDP", "Древесно-фужерный, ноты: грейпфрут, ладан, сандал", "12500", parfumShop.getId(),
                             "https://picsum.photos/seed/bleu/600/400"),
